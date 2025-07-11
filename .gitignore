@@ -1,0 +1,6 @@
+worldquant_venv
+worldquant/credential.json
+db/worldquant.db
+templates/*
+!templates/0-example.txt
+__pycache__
