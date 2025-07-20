@@ -2,12 +2,12 @@ from worldquant.api import WorldQuantSession
 
 from db.database import SessionLocal
 from db.crud.data_field import upsert_data_field
-from db.crud.simulation import upsert_simulation, get_simulations
+from db.crud.alpha import upsert_alpha, get_alphas
 from db.crud.data_field import get_data_fields_by_criteria
 from db.crud.alpha_queue import delete_alpha_queue_by_template_id, insert_alpha_queue, delete_alpha_queue_by_id
 from db.crud.alpha_template import upsert_alpha_template
-from db.schema.data_field import DataFieldCreate
-from db.schema.simulation import SimulationCreate, SimulationUpdate
+from db.schema.data_field import DataFieldBase
+from db.schema.alpha import AlphaBase
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pydantic import ValidationError
@@ -62,21 +62,31 @@ class WorldQuantService():
 
     def get_all_alphas(self, params):
         res = self.session.search_alpha(params)
-        count = res['count']
+        if res.status_code != 200:
+            logger.error(f'fail to fetch alphas {res.code} {res.text}')
+            return None
+
+        count = res.json()['count']
         logger.info(f'found {count} alphas')
         result = []
-        for i in range(0, count, 100):
-            res = self.session.search_alpha(params, 100, i)
+        batch_size = 100
+        for i in range(0, count, batch_size):
+            res = self.session.search_alpha(params, limit = batch_size, offset = i).json()
             result += res['results']
+            logger.info(f'fetched {len(result)}')
         return result
 
 
-    def refresh_datafields(self, 
-                           params = {'region': 'USA', 'delay': '1', 'universe': 'TOP3000', 'instrumentType': 'EQUITY'}):
+    def refresh_datafields(self, params = {
+        'region': 'USA',
+        'delay': '1',
+        'universe': 'TOP3000',
+        'instrumentType': 'EQUITY'
+    }):
         data_fields = self.get_all_datafields(params)
         for data_field in data_fields:
             try:
-                dataFieldCreate = DataFieldCreate.model_validate({
+                df = DataFieldBase.model_validate({
                     "field_name": data_field["id"],
                     **{k: v for k, v in data_field.items() if k != "id"},
                     "dataset_id": data_field.get("dataset", {}).get("id"),
@@ -88,10 +98,56 @@ class WorldQuantService():
                     "user_count" : data_field.get('userCount'),
                     "alpha_count" : data_field.get('alphaCount')
                 })
-                upsert_data_field(self.db, dataFieldCreate)
+                upsert_data_field(self.db, df)
             except ValidationError as e:
                 print(f"Validation failed: {e.errors()}")
         logger.info("All data fields are refreshed to local db!")
+
+
+    def refresh_alphas(self, params = {
+        'is.sharpe>': '1.25',
+        'is.fitness>': '1',
+        'is.turnover>': '0.01',
+        'is.turnover<': '0.7',
+        'hidden': 'false',
+    }):
+        alphas = self.get_all_alphas(params)
+        for alpha in alphas:
+            try:
+                settings = alpha.get('settings', {})
+                metrics = alpha.get('is', {})
+                data = AlphaBase.model_validate({
+                    'alpha_id': alpha.get('id'),
+                    'expression': alpha.get('regular', {}).get('code'),
+                    'type': alpha.get('type'),
+                    'instrument_type': settings.get('instrumentType'),
+                    'region': settings.get('instrumentType'),
+                    'universe': settings.get('universe'),
+                    'delay': settings.get('delay'),
+                    'decay': settings.get('decay'),
+                    'neutralization': settings.get('neutralization'),
+                    'truncation': settings.get('truncation'),
+                    'pasteurization': settings.get('pasteurization'),
+                    'unit_handling': settings.get('unitHandling'),
+                    'nan_handling': settings.get('nanHandling'),
+                    'max_trade': settings.get('maxTrade'),
+                    'language': settings.get('language'),
+                    'visualization': settings.get('visualization'),
+                    'status': alpha.get('status'),
+                    'sharpe': metrics.get('sharpe'),
+                    'fitness': metrics.get('fitness'),
+                    'turnover': metrics.get('turnover'),
+                    'drawdown': metrics.get('drawdown'),
+                    'long_count': metrics.get('longCount'),
+                    'short_count': metrics.get('shortCount'),
+                    'returns': metrics.get('returns'),
+                    'margin': metrics.get('margin'),
+                    'pnl': metrics.get('pnl')
+                })
+                upsert_alpha(self.db, data)
+            except ValidationError as e:
+                print(f"Validation failed: {e.errors()}")
+        logger.info("All alphas are refreshed to local db!")
 
 
     def get_templates(self, template_id = None):
@@ -162,27 +218,27 @@ class WorldQuantService():
         wait_sec = 60
         retries = 0
         max_retries = 3
-        while retries < max_retries:
-            ac_response = self.session.check_alpha(alpha_id)
-            if ac_response.status_code == 200:
-                if ac_response.text:
-                    break
-                else:
-                    logger.warning(f'alpha_id, {alpha_id}, {ac_response.status_code}, wait for {wait_sec} s and try again')
-                    time.sleep(wait_sec)
-                    wait_sec *= 2
-                    max_retries += 1
-            elif ac_response.status_code == 429:
-                logger.warning(f'alpha_id, {alpha_id}, {ac_response.status_code}, {ac_response.text}, wait for 30 s and try again')
-                time.sleep(30)
-            else:
-                logger.error(f'alpha_id, {alpha_id}, error {ac_response.status_code}, {ac_response.text}')
-                return
-        
         try:
+            while retries < max_retries:
+                ac_response = self.session.check_alpha(alpha_id)
+                if ac_response.status_code == 200:
+                    if ac_response.text:
+                        break
+                    else:
+                        logger.warning(f'alpha_id, {alpha_id}, {ac_response.status_code}, wait for {wait_sec} s and try again')
+                        time.sleep(wait_sec)
+                        wait_sec *= 2
+                        max_retries += 1
+                elif ac_response.status_code == 429:
+                    logger.warning(f'alpha_id, {alpha_id}, {ac_response.status_code}, {ac_response.text}, wait for 30 s and try again')
+                    time.sleep(30)
+                else:
+                    logger.error(f'alpha_id, {alpha_id}, error {ac_response.status_code}, {ac_response.text}')
+                    return
+        
             alpha_check_list = ac_response.json().get('is').get('checks')
         except Exception as e:
-            logger.error(f'{ac_response.status_code, ac_response.text}')
+            logger.error(f'fail to check alpha {ac_response.status_code, ac_response.text}')
             return
         
         alpha_check_dict = {'alpha_id': alpha_id}
@@ -193,7 +249,7 @@ class WorldQuantService():
             if self.check_metric_mapping.get(check_name):
                 alpha_check_dict[self.check_metric_mapping.get(check_name)] = check.get('value')
             if check_name == 'ALREADY_SUBMITTED':
-                check_status = 'SUBMITTED'
+                check_status = 'ACTIVE'
                 break
             elif result == 'FAIL':
                 check_status = 'FAIL'
@@ -218,22 +274,22 @@ class WorldQuantService():
             alpha_check_dict['returns'] = alpha_metrics.get('returns')
             alpha_check_dict['short_count'] = alpha_metrics.get('shortCount')
 
-        simulationUpdate = SimulationUpdate.model_validate(alpha_check_dict)
-        upsert_simulation(self.db, simulationUpdate)
+        alpha = AlphaBase.model_validate(alpha_check_dict)
+        upsert_alpha(self.db, alpha)
         logger.info(f'simulation table updated for alpha check, alpha_id {alpha_id}, status {check_status}')
         return check_status
 
 
     def check_all_alpha(self):
-        result = get_simulations(self.db, status= ['COMPLETE'])
+        result = get_alphas(self.db, status= ['UNSUBMITTED'])
         for row in result:
             self.check_alpha(row.alpha_id)
 
 
-    def simulate_one(self, alpha):
+    def simulate_one(self, simulation):
         with self.session_scope() as db:
             while True:
-                response = self.session.post_simulation(alpha)
+                response = self.session.post_simulation(simulation)
                 if response.status_code < 300:
                     sim_progress_url = response.headers['Location']
                     simulate_id = sim_progress_url.split('/')[-1]
@@ -254,11 +310,11 @@ class WorldQuantService():
                 else:
                     break
 
-            if res.get('status') == 'COMPLETE':
+            if res.get('status') == 'UNSUBMITTED':
                 alpha_id = res.get('alpha')
                 logger.info(f'Simulation completed, alpha_id {alpha_id}')
                 # upsert simulation
-                simulationCreate = SimulationCreate.model_validate({
+                alpha = AlphaBase.model_validate({
                     'type': res.get('type'),
                     'instrument_type': res.get('settings').get('instrumentType'),
                     'region': res.get('settings').get('region'),
@@ -278,7 +334,7 @@ class WorldQuantService():
                     'status': res.get('status'),
                     'simulation_id': res.get('id')
                 })
-                upsert_simulation(db, simulationCreate)
+                upsert_alpha(db, alpha)
                 logger.debug(f'simulation table updated, alpha_id {alpha_id}')
 
                 # update alpha check and status for simulation table
@@ -315,15 +371,15 @@ class WorldQuantService():
                 continue
 
             def process_row(row):
-                alpha = row._asdict()
-                queue_id = alpha['id']
-                template = alpha['template']
-                params = alpha['params']
-                alpha.pop('id')
-                alpha.pop('template')
-                alpha.pop('params')
-                alpha['settings'] = json.loads(alpha['settings'])
-                alpha_id = self.simulate_one(alpha)
+                simulation = row._asdict()
+                queue_id = simulation['id']
+                template = simulation['template']
+                params = simulation['params']
+                simulation.pop('id')
+                simulation.pop('template')
+                simulation.pop('params')
+                simulation['settings'] = json.loads(simulation['settings'])
+                alpha_id = self.simulate_one(simulation)
                 if alpha_id:
                     upsert_alpha_template(self.db, alpha_id, template, params)
                     logger.info(f"alpha_template updated for {alpha_id}")
@@ -356,13 +412,13 @@ class WorldQuantService():
             response = self.session.submit_alpha(alpha_id)
             if response.status_code < 300:
                 logger.info(f'submitted alpha {alpha_id} successfully, {response.status_code}')
-                status = 'SUBMITTED'
+                status = 'ACTIVE'
                 break
             elif response.status_code in (400, 403):
                 logger.error(f"fail to sumit alpha {alpha_id}, {response.status_code}, {response.text}")
                 if response.status_code == 403 and \
                     response.json().get('is').get('checks')[0].get('name') == 'ALREADY_SUBMITTED':
-                    status = 'SUBMITTED'
+                    status = 'ACTIVE'
                 else:
                     status = 'FAIL'
                 break
@@ -378,8 +434,8 @@ class WorldQuantService():
             "alpha_id": alpha_id,
             "status": status
         }
-        simulation = SimulationUpdate.model_validate(data)
-        upsert_simulation(self.db, simulation)
+        alpha = AlphaBase.model_validate(data)
+        upsert_alpha(self.db, alpha)
         logger.info(f"simulation status updated")
         return True if response.status_code < 300 else False
 

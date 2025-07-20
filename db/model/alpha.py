@@ -3,13 +3,12 @@ from sqlalchemy.sql import func
 from db.database import Base
 
 
-class Simulation(Base):
-    __tablename__ = "simulation"
+class Alpha(Base):
+    __tablename__ = "alpha"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     alpha_id = Column(String(10))
-    simulation_id = Column(String(100))
-    alpha = Column(Text)
+    expression = Column(Text)
     type = Column(String(20))
     instrument_type = Column(String(20))
     region = Column(String(10))

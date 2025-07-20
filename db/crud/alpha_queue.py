@@ -14,7 +14,3 @@ def delete_alpha_queue_by_template_id(db: Session, template_id):
 def delete_alpha_queue_by_id(db: Session, id):
     db.execute(text(f"delete from alpha_queue where id = {id}"))
     db.commit()
-
-def delete_alpha_queue_all(db: Session):
-    db.execute(text(f"delete from alpha_queue"))
-    db.commit()

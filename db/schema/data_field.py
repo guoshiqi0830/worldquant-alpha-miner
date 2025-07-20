@@ -20,11 +20,6 @@ class DataFieldBase(BaseModel):
     user_count: Optional[int] = None
     alpha_count: Optional[int] = None
 
-class DataFieldCreate(DataFieldBase):
-    pass
-
-class DataFieldUpdate(DataFieldBase):
-    pass
 
 class DataField(DataFieldBase):
     id: int

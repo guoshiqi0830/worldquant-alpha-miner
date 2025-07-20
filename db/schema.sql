@@ -1,9 +1,8 @@
-create table simulation
+create table alpha
 (
     id integer PRIMARY KEY AUTOINCREMENT,
     alpha_id varchar(10),
-    simulation_id varchar(100),
-    alpha text,
+    expression text,
     `type` varchar(20),
     instrument_type varchar(20),
     region varchar(10),
@@ -35,11 +34,11 @@ create table simulation
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TRIGGER update_simulation_timestamp
-AFTER UPDATE ON simulation
+CREATE TRIGGER update_alpha_timestamp
+AFTER UPDATE ON alpha
 FOR EACH ROW
 BEGIN
-    UPDATE simulation SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+    UPDATE alpha SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
 END;
 
 create table data_field

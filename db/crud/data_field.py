@@ -1,24 +1,18 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, text
 from typing import Optional, List
-from db.schema.data_field import DataFieldCreate, DataFieldUpdate
+from db.schema.data_field import DataFieldBase, DataFieldBase
 from db.model.data_field import DataField
 
 
-def get_data_field(db: Session, data_field_id: int):
-    return db.query(DataField).filter(DataField.id == data_field_id).first()
-
-def get_data_fields(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(DataField).offset(skip).limit(limit).all()
-
-def create_data_field(db: Session, data_field: DataFieldCreate):
+def create_data_field(db: Session, data_field: DataFieldBase):
     db_data_field = DataField(**data_field.dict())
     db.add(db_data_field)
     db.commit()
     db.refresh(db_data_field)
     return db_data_field
 
-def upsert_data_field(db: Session, data_field: DataFieldUpdate):
+def upsert_data_field(db: Session, data_field: DataFieldBase):
     db_data_field_list = get_data_fields_by_criteria(
         db,
         data_field.field_name, 
@@ -41,15 +35,6 @@ def upsert_data_field(db: Session, data_field: DataFieldUpdate):
     else:
         create_data_field(db, data_field)
     
-
-def delete_data_field(db: Session, data_field_id: int):
-    db_data_field = db.query(DataField).filter(DataField.id == data_field_id).first()
-    if db_data_field is None:
-        return None
-    
-    db.delete(db_data_field)
-    db.commit()
-    return db_data_field
 
 def get_data_fields_by_criteria(
     db: Session,

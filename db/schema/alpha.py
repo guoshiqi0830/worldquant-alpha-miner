@@ -3,10 +3,9 @@ from datetime import datetime
 from typing import Optional
 
 
-class SimulationBase(BaseModel):
+class AlphaBase(BaseModel):
     alpha_id: Optional[str] = None
-    simulation_id: Optional[str] = None
-    alpha: Optional[str] = None
+    expression: Optional[str] = None
     type: Optional[str] = None
     instrument_type: Optional[str] = None
     region: Optional[str] = None
@@ -35,13 +34,8 @@ class SimulationBase(BaseModel):
     margin: Optional[float] = None
     pnl: Optional[float] = None
 
-class SimulationCreate(SimulationBase):
-    pass
 
-class SimulationUpdate(SimulationBase):
-    pass
-
-class Simulation(SimulationBase):
+class Alpha(AlphaBase):
     id: int
     created_at: datetime
     updated_at: datetime

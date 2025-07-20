@@ -15,6 +15,7 @@ logger.add(
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_fields', '-d', action='store_true', help='refresh data_fields')
+    parser.add_argument('--refresh_alphas', '-r', action='store_true', help='refresh alphas')
     parser.add_argument('--alpha_queue', '-q', help='refresh alpha_queue')
     parser.add_argument('--append', '-a', action='store_true', help='append alpha_queue')
     parser.add_argument('--check', '-c', nargs='?', const = True, help='refresh alpha checks for completed simulations')
@@ -28,6 +29,9 @@ if __name__ == '__main__':
 
     if args.data_fields:
         service.refresh_datafields()
+    
+    if args.refresh_alphas:
+        service.refresh_alphas()
     
     if args.alpha_queue:
         service.populate_alpha_queue(args.alpha_queue, args.append)

@@ -53,6 +53,6 @@ class WorldQuantSession():
         return self.session.get(url)
     
 
-    def post_simulation(self, alpha):
+    def post_simulation(self, simulation):
         url = f'{self.base_url}/simulations'
-        return self.session.post(url, json=alpha)
+        return self.session.post(url, json=simulation)
