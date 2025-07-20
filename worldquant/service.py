@@ -144,7 +144,7 @@ class WorldQuantService():
                     'margin': metrics.get('margin'),
                     'pnl': metrics.get('pnl')
                 })
-                upsert_alpha(self.db, data)
+                upsert_alpha(self.db, data, False)
             except ValidationError as e:
                 print(f"Validation failed: {e.errors()}")
         logger.info("All alphas are refreshed to local db!")
@@ -214,32 +214,21 @@ class WorldQuantService():
         logger.info(f'inserted {len(params_comb)} alphas')
 
 
-    def check_alpha(self, alpha_id):
-        wait_sec = 60
-        retries = 0
-        max_retries = 3
+    def _check_alpha(self, alpha_id):
         try:
-            while retries < max_retries:
-                ac_response = self.session.check_alpha(alpha_id)
-                if ac_response.status_code == 200:
-                    if ac_response.text:
-                        break
-                    else:
-                        logger.warning(f'alpha_id, {alpha_id}, {ac_response.status_code}, wait for {wait_sec} s and try again')
-                        time.sleep(wait_sec)
-                        wait_sec *= 2
-                        max_retries += 1
-                elif ac_response.status_code == 429:
-                    logger.warning(f'alpha_id, {alpha_id}, {ac_response.status_code}, {ac_response.text}, wait for 30 s and try again')
-                    time.sleep(30)
-                else:
-                    logger.error(f'alpha_id, {alpha_id}, error {ac_response.status_code}, {ac_response.text}')
-                    return
-        
+            ac_response = self.session.check_alpha(alpha_id)
+            if ac_response.status_code == 200:
+                if not ac_response.text:
+                    return 'PENDING'
+            elif ac_response.status_code == 429:
+                return 'WAITING'
+            else:
+                logger.error(f'alpha_id, {alpha_id}, error {ac_response.status_code}, {ac_response.text}')
+                return 'ERROR'
             alpha_check_list = ac_response.json().get('is').get('checks')
         except Exception as e:
-            logger.error(f'fail to check alpha {ac_response.status_code, ac_response.text}')
-            return
+            logger.error(f'fail to check alpha {e}')
+            return 'ERROR'
         
         alpha_check_dict = {'alpha_id': alpha_id}
         check_status = 'PASS'
@@ -273,17 +262,58 @@ class WorldQuantService():
             alpha_check_dict['pnl'] = alpha_metrics.get('pnl')
             alpha_check_dict['returns'] = alpha_metrics.get('returns')
             alpha_check_dict['short_count'] = alpha_metrics.get('shortCount')
-
         alpha = AlphaBase.model_validate(alpha_check_dict)
         upsert_alpha(self.db, alpha)
-        logger.info(f'simulation table updated for alpha check, alpha_id {alpha_id}, status {check_status}')
         return check_status
 
 
-    def check_all_alpha(self):
+    def check_alphas(self, alphas):
+        buffer = []
+        buffer_size = 2
+
+        while len(alphas) > 0 or len(buffer) > 0:
+            current_time = time.time()
+            if len(buffer) < buffer_size:
+                alpha = {
+                    'alpha_id' : alphas.pop(),
+                    'wait_sec': 0,
+                    'wait_until': current_time
+                }
+                buffer.append(alpha)
+            buffer.sort(key = lambda x: x.get('wait_until'))
+            
+            alpha = buffer[0]
+            wait_sec = alpha.get('wait_sec')
+            wait_until = alpha.get('wait_until')
+            alpha_id = alpha.get('alpha_id')
+            if wait_until <= current_time:
+                buffer.pop(0)
+                status = self._check_alpha(alpha_id)
+                logger.info(f'alpha {alpha_id} check status {status}')
+                if status == 'PENDING':
+                    wait_sec = 30 if wait_sec == 0 else wait_sec * 2
+                elif status in ('WAITING', 'ERROR'):
+                    wait_sec = 30
+                else:
+                    continue
+                new_alpha = {
+                    'wait_sec': wait_sec,
+                    'wait_until': current_time + wait_sec,
+                    'alpha_id': alpha_id
+                }
+                buffer.append(new_alpha)
+            else:
+                wait_time = round(wait_until - current_time + 1)
+                logger.info(f'alpha {alpha_id} wait for {wait_time} s')
+                time.sleep(wait_time)
+
+
+    def check_all_alphas(self):
         result = get_alphas(self.db, status= ['UNSUBMITTED'])
+        alphas = []
         for row in result:
-            self.check_alpha(row.alpha_id)
+            alphas.append(row.alpha_id)
+        self.check_alphas(alphas)
 
 
     def simulate_one(self, simulation):
@@ -338,7 +368,7 @@ class WorldQuantService():
                 logger.debug(f'simulation table updated, alpha_id {alpha_id}')
 
                 # update alpha check and status for simulation table
-                self.check_alpha(alpha_id)
+                self.check_alphas([alpha_id])
 
                 return alpha_id
             else:
@@ -403,7 +433,7 @@ class WorldQuantService():
 
 
     def submit_alpha(self, alpha_id):
-        check_result = self.check_alpha(alpha_id)
+        check_result = self.check_alphas([alpha_id])
         if check_result != 'PASS':
             return False
 

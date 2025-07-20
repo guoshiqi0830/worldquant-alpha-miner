@@ -30,7 +30,7 @@ def get_alphas(
 def upsert_alpha(
     db: Session,
     alpha: AlphaBase,
-    refresh_status: bool = False
+    refresh_status: bool = True
 ) -> Optional[Alpha]:
     db_alpha = db.query(Alpha).filter(Alpha.alpha_id == alpha.alpha_id).first()
     if db_alpha:

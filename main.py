@@ -48,9 +48,9 @@ if __name__ == '__main__':
 
     if args.check:
         if args.check == True:
-            service.check_all_alpha()
+            service.check_all_alphas()
         else:
-            service.check_alpha(args.check)
+            service.check_alphas([args.check])
 
     if args.submit:
         if args.submit == True:
