@@ -14,13 +14,13 @@ logger.add(
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_fields', '-d', action='store_true', help='refresh data_fields')
-    parser.add_argument('--refresh_alphas', '-r', action='store_true', help='refresh alphas')
-    parser.add_argument('--alpha_queue', '-q', help='refresh alpha_queue')
+    parser.add_argument('--data_fields', '-d', action='store_true', help='refresh data_fields to local db')
+    parser.add_argument('--refresh_alphas', '-r', action='store_true', help='refresh alphas to local db')
+    parser.add_argument('--alpha_queue', '-q', help='populate alpha_queue from template')
     parser.add_argument('--append', '-a', action='store_true', help='append alpha_queue')
     parser.add_argument('--check', '-c', nargs='?', const = True, help='refresh alpha checks for completed simulations')
     parser.add_argument('--simulation', '-s', nargs='?', const = True, help='start simulation')
-    parser.add_argument('--submit', '-S', nargs='?', const = True, help='submit a single alpha')
+    parser.add_argument('--submit', '-S', nargs='?', const = True, help='find and submit alpha, or specify the alpha_id')
     parser.add_argument('--parallelism', '-p', help='set up the parallelism of the job')
     
     args = parser.parse_args()

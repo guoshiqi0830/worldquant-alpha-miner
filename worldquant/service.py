@@ -121,7 +121,7 @@ class WorldQuantService():
                     'expression': alpha.get('regular', {}).get('code'),
                     'type': alpha.get('type'),
                     'instrument_type': settings.get('instrumentType'),
-                    'region': settings.get('instrumentType'),
+                    'region': settings.get('region'),
                     'universe': settings.get('universe'),
                     'delay': settings.get('delay'),
                     'decay': settings.get('decay'),
@@ -368,10 +368,9 @@ class WorldQuantService():
                     'max_trade': res.get('settings').get('maxTrade'),
                     'language': res.get('settings').get('language'),
                     'visualization': res.get('settings').get('visualization'),
-                    'alpha': res.get('regular'),
+                    'expression': res.get('regular'),
                     'alpha_id': alpha_id,
-                    'status': 'UNSUBMITTED',
-                    'simulation_id': res.get('id')
+                    'status': 'UNSUBMITTED'
                 })
                 upsert_alpha(db, alpha)
                 logger.debug(f'simulation table updated, alpha_id {alpha_id}')
@@ -421,7 +420,7 @@ class WorldQuantService():
                 alpha_id = self.simulate_one(simulation)
                 if alpha_id:
                     upsert_alpha_template(self.db, alpha_id, template, params)
-                    logger.info(f"alpha_template updated for {alpha_id}")
+                    logger.debug(f"alpha_template updated for {alpha_id}")
                     delete_alpha_queue_by_id(self.db, queue_id)
                     self.db.commit()
 
