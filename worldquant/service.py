@@ -293,7 +293,7 @@ class WorldQuantService():
             if wait_until <= current_time:
                 buffer.pop(0)
                 status = self._check_alpha(alpha_id)
-                logger.info(f'alpha {alpha_id} check status {status}')
+                logger.info(f'alpha_id {alpha_id} check status {status}')
                 if status == 'PENDING':
                     wait_sec = 30 if wait_sec == 0 else wait_sec * 2
                 elif status in ('WAITING', 'ERROR'):
@@ -316,12 +316,14 @@ class WorldQuantService():
         wait_sec = 0
         while True:
             status = self._check_alpha(alpha_id)
+            logger.info(f'alpha_id {alpha_id} check status {status}')
             if status == 'PENDING':
                 wait_sec = 30 if wait_sec == 0 else wait_sec * 2
             elif status in ('WAITING', 'ERROR'):
                 wait_sec = 30
             else:
                 return status
+            logger.info(f'alpha_id {alpha_id} wait for {wait_sec} s')
             time.sleep(wait_sec)
         
 
@@ -332,7 +334,7 @@ class WorldQuantService():
                 if response.status_code < 300:
                     sim_progress_url = response.headers['Location']
                     simulate_id = sim_progress_url.split('/')[-1]
-                    logger.info(f'simulation submitted, simulate_id {simulate_id}')
+                    logger.debug(f'simulation submitted, simulate_id {simulate_id}')
                     break
                 elif response.status_code in (429, 401):
                     logger.info(f'{response.status_code}, {response.text}, wait for 30s')
@@ -351,7 +353,7 @@ class WorldQuantService():
 
             if res.get('status') == 'COMPLETE':
                 alpha_id = res.get('alpha')
-                logger.info(f'simulation completed, alpha_id {alpha_id}')
+                logger.debug(f'simulation completed, alpha_id {alpha_id}')
                 # upsert simulation
                 alpha = AlphaBase.model_validate({
                     'type': res.get('type'),
