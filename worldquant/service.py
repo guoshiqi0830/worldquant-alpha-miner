@@ -267,13 +267,17 @@ class WorldQuantService():
         return check_status
 
 
-    def check_alphas(self, alphas):
+    def check_all_alphas(self):
+        result = get_alphas(self.db, status= ['UNSUBMITTED'])
+        alphas = []
+        for row in result:
+            alphas.append(row.alpha_id)
         buffer = []
         buffer_size = 2
 
         while len(alphas) > 0 or len(buffer) > 0:
             current_time = time.time()
-            if len(buffer) < buffer_size:
+            if len(buffer) < buffer_size and len(alphas) > 0:
                 alpha = {
                     'alpha_id' : alphas.pop(),
                     'wait_sec': 0,
@@ -308,13 +312,18 @@ class WorldQuantService():
                 time.sleep(wait_time)
 
 
-    def check_all_alphas(self):
-        result = get_alphas(self.db, status= ['UNSUBMITTED'])
-        alphas = []
-        for row in result:
-            alphas.append(row.alpha_id)
-        self.check_alphas(alphas)
-
+    def check_one_alpha(self, alpha_id):
+        wait_sec = 0
+        while True:
+            status = self._check_alpha(alpha_id)
+            if status == 'PENDING':
+                wait_sec = 30 if wait_sec == 0 else wait_sec * 2
+            elif status in ('WAITING', 'ERROR'):
+                wait_sec = 30
+            else:
+                return status
+            time.sleep(wait_sec)
+        
 
     def simulate_one(self, simulation):
         with self.session_scope() as db:
@@ -323,7 +332,7 @@ class WorldQuantService():
                 if response.status_code < 300:
                     sim_progress_url = response.headers['Location']
                     simulate_id = sim_progress_url.split('/')[-1]
-                    logger.info(f'Simulation submitted, simulate_id {simulate_id}')
+                    logger.info(f'simulation submitted, simulate_id {simulate_id}')
                     break
                 elif response.status_code in (429, 401):
                     logger.info(f'{response.status_code}, {response.text}, wait for 30s')
@@ -340,9 +349,9 @@ class WorldQuantService():
                 else:
                     break
 
-            if res.get('status') == 'UNSUBMITTED':
+            if res.get('status') == 'COMPLETE':
                 alpha_id = res.get('alpha')
-                logger.info(f'Simulation completed, alpha_id {alpha_id}')
+                logger.info(f'simulation completed, alpha_id {alpha_id}')
                 # upsert simulation
                 alpha = AlphaBase.model_validate({
                     'type': res.get('type'),
@@ -361,14 +370,14 @@ class WorldQuantService():
                     'visualization': res.get('settings').get('visualization'),
                     'alpha': res.get('regular'),
                     'alpha_id': alpha_id,
-                    'status': res.get('status'),
+                    'status': 'UNSUBMITTED',
                     'simulation_id': res.get('id')
                 })
                 upsert_alpha(db, alpha)
                 logger.debug(f'simulation table updated, alpha_id {alpha_id}')
 
                 # update alpha check and status for simulation table
-                self.check_alphas([alpha_id])
+                self.check_one_alpha(alpha_id)
 
                 return alpha_id
             else:
@@ -433,7 +442,7 @@ class WorldQuantService():
 
 
     def submit_alpha(self, alpha_id):
-        check_result = self.check_alphas([alpha_id])
+        check_result = self.check_one_alpha(alpha_id)
         if check_result != 'PASS':
             return False
 
@@ -472,12 +481,12 @@ class WorldQuantService():
 
     def find_and_sumbit_alpha(self, count = 1, order_by = 'sharpe', direction = 'asc'):
         result = self.db.execute(
-                text(f"select alpha_id from simulation where status  = 'PASS' order by {order_by} {direction}")
+                text(f"select alpha_id from alpha where status  = 'PASS' order by {order_by} {direction}")
             ).all()
         
         submitted_count = 0
         for row in result:
-            logger.info(f'find a submittable alpha {row.alpha_id}')
+            logger.info(f'found a submittable alpha {row.alpha_id}')
             res = self.submit_alpha(row.alpha_id)
             if res:
                 logger.info(f'alpha {row.alpha_id} submitted')

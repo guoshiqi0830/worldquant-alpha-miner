@@ -50,7 +50,7 @@ if __name__ == '__main__':
         if args.check == True:
             service.check_all_alphas()
         else:
-            service.check_alphas([args.check])
+            service.check_one_alpha(args.check)
 
     if args.submit:
         if args.submit == True:
