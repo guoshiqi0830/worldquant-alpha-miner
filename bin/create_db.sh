@@ -9,10 +9,10 @@ else
 fi
 
 if [ -f "$DB_FILE" ]; then
-    echo "warining $DB_FILE exists!"
-    read -p "overwrite? (y/n) " -n 1 -r
+    echo "warning $DB_FILE exists!"
+    read -p "overwrite? (y/n) " REPLY
     echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    if [ "$REPLY" != "y" ] && [ "$REPLY" != "Y" ]; then
         echo "done."
         exit 1
     fi
