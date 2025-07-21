@@ -123,8 +123,8 @@ class WorldQuantService():
         if not append:
             delete_alpha_queue_by_template_id(self.db, template_id)
         settings = {}
-        with open('config/settings.json') as f:
-            settings = json.dumps(json.load(f)[0]['settings'])
+        with open('config/default_settings.json') as f:
+            settings = json.dumps(json.load(f))
         template = self.get_templates(template_id)[0].get('template')
         params_list =  list(set(re.findall(r'{(.*?)}', template)))
         params = [
