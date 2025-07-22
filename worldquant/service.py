@@ -4,8 +4,7 @@ from db.database import SessionLocal
 from db.crud.data_field import upsert_data_field
 from db.crud.alpha import upsert_alpha, get_alphas
 from db.crud.data_field import get_data_fields_by_criteria
-from db.crud.alpha_queue import delete_alpha_queue_by_template_id, insert_alpha_queue, delete_alpha_queue_by_id
-from db.crud.alpha_template import upsert_alpha_template
+from db.crud.simulation_queue import insert_queue, delete_queue_by_id, delete_queue_by_template_id
 from db.schema.data_field import DataFieldBase
 from db.schema.alpha import AlphaBase
 
@@ -177,7 +176,7 @@ class WorldQuantService():
 
     def populate_alpha_queue_by_template_id(self, template_id, append):
         if not append:
-            delete_alpha_queue_by_template_id(self.db, template_id)
+            delete_queue_by_template_id(self.db, template_id)
         settings = {}
         with open('config/default_settings.json') as f:
             settings = json.dumps(json.load(f))
@@ -208,7 +207,7 @@ class WorldQuantService():
             expression = template
             for key in params:
                 expression = str.replace(expression, f'{{{key}}}' , params[key])
-            insert_alpha_queue(self.db, expression, settings, template_id = template_id, template = template, 
+            insert_queue(self.db, expression, settings, template_id = template_id, template = template, 
                                params = json.dumps(params))
 
         logger.info(f'inserted {len(params_comb)} alphas')
@@ -393,7 +392,7 @@ class WorldQuantService():
             logger.info(f"start to simulate template {template_id}, parallelism {parallelism}")
             where_condition = f"where template_id = {template_id}"
         else:
-            logger.info(f"start to simulate all alphas from alpha queue")
+            logger.info(f"start to simulate all alphas from the queue")
 
         while True:
             if time.time() - 3600 > self.session_time:
@@ -402,8 +401,8 @@ class WorldQuantService():
             time.sleep(1)
             
             result = self.db.execute(
-                text(f"select id, regular, settings, type, template, params \
-                     from alpha_queue {where_condition} limit {100}")
+                text(f"select id, regular, settings, type \
+                     from simulation_queue {where_condition} limit {100}")
             ).all()
             if not result:
                 logger.info("no alpha found in the queue, wait for 1 min")
@@ -413,17 +412,11 @@ class WorldQuantService():
             def process_row(row):
                 simulation = row._asdict()
                 queue_id = simulation['id']
-                template = simulation['template']
-                params = simulation['params']
                 simulation.pop('id')
-                simulation.pop('template')
-                simulation.pop('params')
                 simulation['settings'] = json.loads(simulation['settings'])
                 alpha_id = self.simulate_one(simulation)
                 if alpha_id:
-                    upsert_alpha_template(self.db, alpha_id, template, params)
-                    logger.debug(f"alpha_template updated for {alpha_id}")
-                    delete_alpha_queue_by_id(self.db, queue_id)
+                    delete_queue_by_id(self.db, queue_id)
                     self.db.commit()
 
             with ThreadPoolExecutor(max_workers = parallelism) as executor:

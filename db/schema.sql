@@ -70,12 +70,10 @@ BEGIN
     UPDATE data_field SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
 END;
 
-create table alpha_queue
+create table simulation_queue
 (
     id integer PRIMARY KEY AUTOINCREMENT,
     template_id integer,
-    template text,
-    params json,
     regular text,
     settings json,
     type varchar(10),
@@ -83,26 +81,9 @@ create table alpha_queue
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TRIGGER update_alpha_queue_timestamp
-AFTER UPDATE ON alpha_queue
+CREATE TRIGGER update_simulation_queue_timestamp
+AFTER UPDATE ON simulation_queue
 FOR EACH ROW
 BEGIN
-    UPDATE alpha_queue SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
-END;
-
-create table alpha_template
-(
-    id integer PRIMARY KEY AUTOINCREMENT,
-    alpha_id varchar(10),
-    template text,
-    params json,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TRIGGER update_alpha_template_timestamp
-AFTER UPDATE ON alpha_template
-FOR EACH ROW
-BEGIN
-    UPDATE alpha_template SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+    UPDATE simulation_queue SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
 END;
