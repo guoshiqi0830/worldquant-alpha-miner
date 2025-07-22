@@ -50,7 +50,6 @@ class WorldQuantService():
     def get_all_datafields(self, params):
         res = self.session.get_datafields(params).json()
         count = res.get('count')
-
         logger.info(f'found {count} datafields')
         result = []
         for i in range(0, count, 50):
@@ -64,7 +63,6 @@ class WorldQuantService():
         if res.status_code != 200:
             logger.error(f'fail to fetch alphas {res.code} {res.text}')
             return None
-
         count = res.json()['count']
         logger.info(f'found {count} alphas')
         result = []
@@ -147,70 +145,6 @@ class WorldQuantService():
             except ValidationError as e:
                 print(f"Validation failed: {e.errors()}")
         logger.info("All alphas are refreshed to local db!")
-
-
-    def get_templates(self, template_id = None):
-        templates = []
-        for file in os.listdir('templates'):
-            id, description = file[:-4].split('-')
-            if template_id and template_id != id:
-                continue
-            with open(f'templates/{file}', 'r') as f:
-                template = {
-                    'id': id,
-                    'template': f.read(),
-                    'description': description
-                }
-                templates.append(template)
-        return templates
-
-
-    def populate_alpha_queue(self, template_id = None, append = False):
-        if not template_id:
-            result = self.get_templates(template_id)
-            for template in result:
-                self.populate_alpha_queue_by_template_id(template.id, append)
-        else:
-            self.populate_alpha_queue_by_template_id(template_id, append)
-
-
-    def populate_alpha_queue_by_template_id(self, template_id, append):
-        if not append:
-            delete_queue_by_template_id(self.db, template_id)
-        settings = {}
-        with open('config/default_settings.json') as f:
-            settings = json.dumps(json.load(f))
-        template = self.get_templates(template_id)[0].get('template')
-        params_list =  list(set(re.findall(r'{(.*?)}', template)))
-        params = [
-            {
-                'filter': dict(pair.split("=") for pair in param.split(",") if '=' in pair),  
-                'param': param
-            } 
-            for param in params_list
-        ]
-        param_data_field = []
-        for p in params:
-            data_fields = get_data_fields_by_criteria(self.db, **p['filter'])
-            param_data_field.append({ 'data_fields': [ data_field.field_name for data_field in data_fields ],
-                                    'param': p['param'] })
-        param_values = [ d['param'] for d in param_data_field]
-        data_field_lists = [d['data_fields'] for d in param_data_field]
-        logger.info(f'param count, {[(param_values[i] ,len(data_field_lists[i])) for i in range(len(data_field_lists))]}')
-        params_comb = []
-        for b_combination in product(*data_field_lists):
-            params_comb.append(dict(zip(param_values, b_combination)))
-
-        logger.info(f'found {len(params_comb)} alphas')
-
-        for params in params_comb:
-            expression = template
-            for key in params:
-                expression = str.replace(expression, f'{{{key}}}' , params[key])
-            insert_queue(self.db, expression, settings, template_id = template_id, template = template, 
-                               params = json.dumps(params))
-
-        logger.info(f'inserted {len(params_comb)} alphas')
 
 
     def _check_alpha(self, alpha_id):

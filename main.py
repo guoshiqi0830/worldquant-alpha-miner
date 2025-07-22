@@ -1,4 +1,5 @@
 from worldquant.service import WorldQuantService
+from worldquant.alpha_template import AlphaTemplate
 from loguru import logger
 import sys
 import argparse
@@ -7,7 +8,8 @@ import argparse
 logger.remove()
 logger.add(
     sys.stdout,
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} - {message}",
+    colorize=True,
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <cyan>{message}</cyan>",
     level="INFO"
 )
 
@@ -16,7 +18,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_fields', '-d', action='store_true', help='refresh data_fields to local db')
     parser.add_argument('--refresh_alphas', '-r', action='store_true', help='refresh alphas to local db')
-    parser.add_argument('--alpha_queue', '-q', help='populate alpha_queue from template')
+    parser.add_argument('--simulation_queue', '-q', help='load simulation_queue from template')
     parser.add_argument('--append', '-a', action='store_true', help='append alpha_queue')
     parser.add_argument('--check', '-c', nargs='?', const = True, help='refresh alpha checks for completed simulations')
     parser.add_argument('--simulation', '-s', nargs='?', const = True, help='start simulation')
@@ -33,8 +35,9 @@ if __name__ == '__main__':
     if args.refresh_alphas:
         service.refresh_alphas()
     
-    if args.alpha_queue:
-        service.populate_alpha_queue(args.alpha_queue, args.append)
+    if args.simulation_queue:
+        at = AlphaTemplate(args.simulation_queue)
+        at.load_simulation_queue(append = args.append)
     
     parallelism =int(args.parallelism) if args.parallelism else None
 

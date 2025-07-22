@@ -2,6 +2,6 @@ worldquant_venv
 worldquant/credential.json
 db/worldquant.db
 templates/*
-!templates/0-example.txt
+!templates/example.yaml
 __pycache__
 .vscode

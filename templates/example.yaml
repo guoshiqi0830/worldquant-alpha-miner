@@ -1,0 +1,17 @@
+id: 1
+
+expression: >
+  {group_op}({fundamental6}/cap, {group})
+
+parameters:
+  group_op:
+    - group_rank
+  fundamental6:
+    type: data_field
+    filters:
+      type: MATRIX
+      dataset_id: fundamental6
+  group:
+    - subindustry
+
+settings:
