@@ -3,8 +3,7 @@ from worldquant.api import WorldQuantSession
 from db.database import SessionLocal
 from db.crud.data_field import upsert_data_field
 from db.crud.alpha import upsert_alpha, get_alphas
-from db.crud.data_field import get_data_fields_by_criteria
-from db.crud.simulation_queue import insert_queue, delete_queue_by_id, delete_queue_by_template_id
+from db.crud.simulation_queue import delete_queue_by_id
 from db.schema.data_field import DataFieldBase
 from db.schema.alpha import AlphaBase
 
@@ -12,19 +11,18 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pydantic import ValidationError
 from loguru import logger
 from sqlalchemy import text
-from itertools import product
 from contextlib import contextmanager
 
 import time
 import json
-import os
-import re
 
 
 class WorldQuantService():
     def __init__(self):
         self.session = WorldQuantSession()
         self.session_time = time.time()
+        self.last_print_time = time.time()
+        self.print_interval = 5 * 60
         self.db = SessionLocal()
         self.check_metric_mapping = {
             'LOW_SHARPE': 'sharpe',
@@ -344,6 +342,13 @@ class WorldQuantService():
                 continue
 
             def process_row(row):
+                if time.time() - self.last_print_time > self.print_interval:
+                    result = self.db.execute(text(f"select count(*) as cnt from simulation_queue {where_condition}")).first()
+                    logger.info(f'{result.cnt} alphas in the queue')
+                    result = self.db.execute(text(f"select count(*) as cnt from alpha where status = 'PASS'")).first()
+                    logger.info(f'{result.cnt} PASS alphas were found')
+                    self.last_print_time = time.time()
+
                 simulation = row._asdict()
                 queue_id = simulation['id']
                 simulation.pop('id')
@@ -411,7 +416,6 @@ class WorldQuantService():
         result = self.db.execute(
                 text(f"select alpha_id from alpha where status  = 'PASS' order by {order_by} {direction}")
             ).all()
-        
         submitted_count = 0
         for row in result:
             logger.info(f'found a submittable alpha {row.alpha_id}')
