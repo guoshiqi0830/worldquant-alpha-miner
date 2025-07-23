@@ -61,7 +61,8 @@ class AlphaTemplate():
                 param_type = value.get('type')
                 value_list = []
                 if param_type == 'data_field':
-                    data_fields = get_data_fields_by_criteria(self.db, **value.get('filters'))
+                    data_fields = get_data_fields_by_criteria(self.db, **value.get('where'), 
+                                                              order_by=value.get('order_by'), limit=value.get('limit'))
                     value_list = [ data_field.field_name for data_field in data_fields ]
                 else:
                     pass

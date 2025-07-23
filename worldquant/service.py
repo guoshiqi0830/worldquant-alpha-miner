@@ -186,6 +186,7 @@ class WorldQuantService():
                 time.sleep(5)
 
         alpha_metrics = alpha_response.json().get('is')
+        logger.info(f'alpha_id {alpha_id}, sharpe: {alpha_metrics.get("sharpe")}, fitness: {alpha_metrics.get("fitness")}')
         if alpha_metrics:
             alpha_check_dict['drawdown'] = alpha_metrics.get('drawdown')
             alpha_check_dict['long_count'] = alpha_metrics.get('longCount')
@@ -224,7 +225,7 @@ class WorldQuantService():
             if wait_until <= current_time:
                 buffer.pop(0)
                 status = self._check_alpha(alpha_id)
-                logger.info(f'alpha_id {alpha_id} check status {status}')
+                logger.info(f'alpha_id {alpha_id}, check status {status}')
                 if status == 'PENDING':
                     wait_sec = 30 if wait_sec == 0 else wait_sec * 2
                 elif status in ('WAITING', 'ERROR'):
@@ -247,7 +248,7 @@ class WorldQuantService():
         wait_sec = 0
         while True:
             status = self._check_alpha(alpha_id)
-            logger.info(f'alpha_id {alpha_id} check status {status}')
+            logger.info(f'alpha_id {alpha_id}, check status {status}')
             if status == 'PENDING':
                 wait_sec = 30 if wait_sec == 0 else wait_sec * 2
             elif status in ('WAITING', 'ERROR'):
@@ -267,9 +268,13 @@ class WorldQuantService():
                     simulate_id = sim_progress_url.split('/')[-1]
                     logger.debug(f'simulation submitted, simulate_id {simulate_id}')
                     break
-                elif response.status_code in (429, 401):
+                elif response.status_code in (429, ):
                     logger.info(f'{response.status_code}, {response.text}, wait for 30s')
                     time.sleep(30)
+                    continue
+                elif response.status_code in (401,):
+                    self.session._sign_in()
+                    logger.info(f'{response.status_code}, {response.text}, sign in again, wait for 30s')
                     continue
                 else:
                     logger.error(f'{response.status_code}, {response.text}')
@@ -334,7 +339,7 @@ class WorldQuantService():
             
             result = self.db.execute(
                 text(f"select id, regular, settings, type \
-                     from simulation_queue {where_condition} limit {100}")
+                     from simulation_queue {where_condition} order by id limit {100}")
             ).all()
             if not result:
                 logger.info("no alpha found in the queue, wait for 1 min")
@@ -346,7 +351,7 @@ class WorldQuantService():
                     result = self.db.execute(text(f"select count(*) as cnt from simulation_queue {where_condition}")).first()
                     logger.info(f'{result.cnt} alphas in the queue')
                     result = self.db.execute(text(f"select count(*) as cnt from alpha where status = 'PASS'")).first()
-                    logger.info(f'{result.cnt} PASS alphas were found')
+                    logger.info(f'{result.cnt} submittable alphas were found')
                     self.last_print_time = time.time()
 
                 simulation = row._asdict()

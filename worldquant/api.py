@@ -21,6 +21,7 @@ class WorldQuantSession():
             return sess
         else:
             logger.error(f'fail to login status code {response.status_code}, {response.text}')
+            exit()
         
 
     def get_datafields(self, params, limit = 50, offset = 0):

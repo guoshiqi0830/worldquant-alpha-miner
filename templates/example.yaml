@@ -8,7 +8,7 @@ parameters:
     - group_rank
   fundamental6:
     type: data_field
-    filters:
+    where:
       type: MATRIX
       dataset_id: fundamental6
   group:
