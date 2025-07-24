@@ -153,6 +153,9 @@ class WorldQuantService():
                     return 'PENDING'
             elif ac_response.status_code == 429:
                 return 'WAITING'
+            elif ac_response.status_code == 401:
+                self.session._sign_in()
+                return 'EXPIRED'
             else:
                 logger.error(f'alpha_id, {alpha_id}, error {ac_response.status_code}, {ac_response.text}')
                 return 'ERROR'
@@ -228,7 +231,7 @@ class WorldQuantService():
                 logger.info(f'alpha_id {alpha_id}, check status {status}')
                 if status == 'PENDING':
                     wait_sec = 30 if wait_sec == 0 else wait_sec * 2
-                elif status in ('WAITING', 'ERROR'):
+                elif status in ('WAITING', 'ERROR', 'EXPIRED'):
                     wait_sec = 30
                 else:
                     continue

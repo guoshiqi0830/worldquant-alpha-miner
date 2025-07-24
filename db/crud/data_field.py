@@ -46,7 +46,7 @@ def get_data_fields_by_criteria(
     delay: Optional[int] = None,
     universe: Optional[str] = None,
     type: Optional[str] = None,
-    skip: int = 0,
+    offset: int = 0,
     limit: int = 1000,
     order_by: Optional[str] = ''
 ) -> List[DataField]:
@@ -73,4 +73,4 @@ def get_data_fields_by_criteria(
     if filters:
         query = query.filter(and_(*filters))
     
-    return query.order_by(text(order_by)).offset(skip).limit(limit).all()
+    return query.order_by(text(order_by)).offset(offset).limit(limit).all()
