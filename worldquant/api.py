@@ -8,7 +8,7 @@ from util.util import add_params_to_url
 class WorldQuantSession():
     def __init__(self):
         self.base_url = 'https://api.worldquantbrain.com'
-        self.session
+        self.session = None
         self._sign_in()
         
 
@@ -20,6 +20,7 @@ class WorldQuantSession():
         if response.status_code == 201:
             logger.info(f'login status code {response.status_code}, user {response.json().get('user').get('id')}')
             self.session = sess
+            return sess
         else:
             logger.error(f'fail to login status code {response.status_code}, {response.text}')
             exit()
