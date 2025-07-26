@@ -321,7 +321,7 @@ class WorldQuantService():
 
                 return alpha_id
             else:
-                logger.warning(f'Fail to complete simulation for {simulate_id}, status is {res.get('status')}')
+                logger.warning(f'Fail to complete simulation for {simulate_id}, status is {res.get("status")}')
                 logger.warning(f'{res}')
                 return None
 
