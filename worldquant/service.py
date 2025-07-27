@@ -15,6 +15,7 @@ from contextlib import contextmanager
 
 import time
 import json
+import random
 
 
 class WorldQuantService():
@@ -32,6 +33,10 @@ class WorldQuantService():
             'CONCENTRATED_WEIGHT': 'concentrated_weight',
             'SELF_CORRELATION': 'self_correlation',
         }
+        self.sharepe_low = 1.2
+        self.fitness_low = 0.7
+        self.turnover_low = 0.01
+        self.turnover_high = 0.7
 
     @contextmanager
     def session_scope(self):
@@ -95,18 +100,36 @@ class WorldQuantService():
                 })
                 upsert_data_field(self.db, df)
             except ValidationError as e:
-                print(f"Validation failed: {e.errors()}")
+                logger.error(f"Validation failed: {e.errors()}")
+                return
         logger.info("All data fields are refreshed to local db!")
 
 
-    def refresh_alphas(self, params = {
-        'is.sharpe>': '1.25',
-        'is.fitness>': '1',
-        'is.turnover>': '0.01',
-        'is.turnover<': '0.7',
-        'hidden': 'false',
-    }):
-        alphas = self.get_all_alphas(params)
+    def refresh_alphas(self, start_date = None, end_date = None):
+        positive_params = {
+            'is.sharpe>': f'{self.sharpe_low}',
+            'is.fitness>': f'{self.fitness_low}'
+        }
+        negative_params = {
+            'is.sharpe<': f'-{self.sharpe_low}',
+            'is.fitness<': f'-{self.fitness_low}'
+        }
+        date_params = {}
+        if start_date:
+            date_params['dateCreated>'] = f'{start_date}T00:00:00+08:00'
+        if end_date:
+            date_params['dateCreated<'] = f'{end_date}T00:00:00+08:00'
+
+        alphas = []
+        for params in (positive_params, negative_params):
+            alphas += self.get_all_alphas({
+                'is.turnover>': f'{self.turnover_low}',
+                'is.turnover<': f'{self.turnover_high}',
+                'hidden': 'false',
+                **params,
+                **date_params
+            })
+
         for alpha in alphas:
             try:
                 settings = alpha.get('settings', {})
@@ -141,7 +164,7 @@ class WorldQuantService():
                 })
                 upsert_alpha(self.db, data, False)
             except ValidationError as e:
-                print(f"Validation failed: {e.errors()}")
+                logger.error(f"Validation failed: {e.errors()}")
         logger.info("All alphas are refreshed to local db!")
 
 
@@ -189,6 +212,7 @@ class WorldQuantService():
                 time.sleep(5)
 
         alpha_metrics = alpha_response.json().get('is')
+        logger.debug(f'alpha_id {alpha_id}, expression: {alpha_response.json().get("regular").get("code")}')
         logger.info(f'alpha_id {alpha_id}, sharpe: {alpha_metrics.get("sharpe")}, fitness: {alpha_metrics.get("fitness")}')
         if alpha_metrics:
             alpha_check_dict['drawdown'] = alpha_metrics.get('drawdown')
@@ -198,7 +222,14 @@ class WorldQuantService():
             alpha_check_dict['returns'] = alpha_metrics.get('returns')
             alpha_check_dict['short_count'] = alpha_metrics.get('shortCount')
         alpha = AlphaBase.model_validate(alpha_check_dict)
-        upsert_alpha(self.db, alpha)
+        if check_status ==  'PASS' or \
+            (alpha_metrics.get("sharpe") >= self.sharepe_low and alpha_metrics.get("fitness") >= self.fitness_low) \
+            or (alpha_metrics.get("sharpe") <=  -self.sharepe_low and alpha_metrics.get("fitness") <= -self.fitness_low):
+            logger.debug(f"alpha_id {alpha_id}, keep this alpha in local db")
+            upsert_alpha(self.db, alpha)
+        else:
+            logger.debug(f"alpha_id {alpha_id}, discard this alpha")
+
         return check_status
 
 
@@ -321,18 +352,33 @@ class WorldQuantService():
 
                 return alpha_id
             else:
-                logger.warning(f'Fail to complete simulation for {simulate_id}, status is {res.get("status")}')
-                logger.warning(f'{res}')
+                logger.error(f'Fail to complete simulation for {simulate_id}, status is {res.get("status")}')
+                logger.error(f'{res}')
                 return None
 
-
-    def simulate_from_alpha_queue(self, template_id = None, parallelism = 3):
+    
+    def print_simulation_status(self, template_id = None):
         where_condition = ''
-        if template_id:
-            logger.info(f"start to simulate template {template_id}, parallelism {parallelism}")
+        if template_id != None:
             where_condition = f"where template_id = {template_id}"
+        result = self.db.execute(text(f"select count(*) as cnt from simulation_queue {where_condition}")).first()
+        if template_id != None:
+            logger.info(f'{result.cnt} alphas for template_id {template_id} in the queue')
         else:
-            logger.info(f"start to simulate all alphas from the queue")
+            logger.info(f'{result.cnt} alphas in the queue')
+            
+        result = self.db.execute(text(f"select count(*) as cnt from alpha where status = 'PASS'")).first()
+        logger.info(f'{result.cnt} submittable alphas were found')
+
+
+    def simulate_from_alpha_queue(self, template_id = None, parallelism = 3, shuffle = False):
+        if template_id != None:
+            where_condition = f'where template_id = {template_id}'
+            template_info = f'simulate template {template_id}'
+        else:
+            where_condition  = ''
+            template_info = 'all alphas from the queue'
+        logger.info(f"start to simulate {template_info}, parallelism {parallelism}, shuffle {shuffle}")
 
         while True:
             if time.time() - 3600 > self.session_time:
@@ -342,20 +388,21 @@ class WorldQuantService():
             
             result = self.db.execute(
                 text(f"select id, regular, settings, type \
-                     from simulation_queue {where_condition} order by id limit {100}")
+                     from simulation_queue {where_condition} order by id limit {1000}")
             ).all()
             if not result:
                 logger.info("no alpha found in the queue, wait for 1 min")
                 time.sleep(60)
                 continue
 
+            if shuffle:
+                result = list(result)
+                random.shuffle(result)
+
             def process_row(row):
                 if time.time() - self.last_print_time > self.print_interval:
-                    result = self.db.execute(text(f"select count(*) as cnt from simulation_queue {where_condition}")).first()
-                    logger.info(f'{result.cnt} alphas in the queue')
-                    result = self.db.execute(text(f"select count(*) as cnt from alpha where status = 'PASS'")).first()
-                    logger.info(f'{result.cnt} submittable alphas were found')
                     self.last_print_time = time.time()
+                    self.print_simulation_status(template_id)
 
                 simulation = row._asdict()
                 queue_id = simulation['id']
@@ -368,6 +415,8 @@ class WorldQuantService():
 
             with ThreadPoolExecutor(max_workers = parallelism) as executor:
                 futures = [executor.submit(process_row, row) for row in result]
+                if shuffle:
+                    random.shuffle(futures)
                 for future in as_completed(futures):
                     try:
                         future.result()
