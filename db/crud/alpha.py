@@ -47,8 +47,8 @@ def upsert_alpha(
         create_alpha(db, alpha)
     return db_alpha
 
-def delete_alpha(db: Session, simulation_id: int) -> bool:
-    db_alpha = db.query(Alpha).filter(Alpha.id == simulation_id).first()
+def delete_alpha(db: Session, alpha_id: str) -> bool:
+    db_alpha = db.query(Alpha).filter(Alpha.alpha_id == alpha_id).first()
     if db_alpha:
         db.delete(db_alpha)
         db.commit()

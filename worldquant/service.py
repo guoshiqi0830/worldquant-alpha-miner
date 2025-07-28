@@ -2,7 +2,7 @@ from worldquant.api import WorldQuantSession
 
 from db.database import SessionLocal
 from db.crud.data_field import upsert_data_field
-from db.crud.alpha import upsert_alpha, get_alphas
+from db.crud.alpha import upsert_alpha, get_alphas, delete_alpha
 from db.crud.simulation_queue import delete_queue_by_id
 from db.schema.data_field import DataFieldBase
 from db.schema.alpha import AlphaBase
@@ -229,6 +229,7 @@ class WorldQuantService():
             upsert_alpha(self.db, alpha)
         else:
             logger.debug(f"alpha_id {alpha_id}, discard this alpha")
+            delete_alpha(self.db, alpha_id)
 
         return check_status
 
