@@ -33,7 +33,7 @@ class WorldQuantService():
             'CONCENTRATED_WEIGHT': 'concentrated_weight',
             'SELF_CORRELATION': 'self_correlation',
         }
-        self.sharepe_low = 1.2
+        self.sharpe_low = 1.2
         self.fitness_low = 0.7
         self.turnover_low = 0.01
         self.turnover_high = 0.7
@@ -73,7 +73,7 @@ class WorldQuantService():
         for i in range(0, count, batch_size):
             res = self.session.search_alpha(params, limit = batch_size, offset = i).json()
             result += res['results']
-            logger.info(f'fetched {len(result)}')
+            logger.debug(f'fetched {len(result)}')
         return result
 
 
@@ -223,8 +223,8 @@ class WorldQuantService():
             alpha_check_dict['short_count'] = alpha_metrics.get('shortCount')
         alpha = AlphaBase.model_validate(alpha_check_dict)
         if check_status ==  'PASS' or \
-            (alpha_metrics.get("sharpe") >= self.sharepe_low and alpha_metrics.get("fitness") >= self.fitness_low) \
-            or (alpha_metrics.get("sharpe") <=  -self.sharepe_low and alpha_metrics.get("fitness") <= -self.fitness_low):
+            (alpha_metrics.get("sharpe") >= self.sharpe_low and alpha_metrics.get("fitness") >= self.fitness_low) \
+            or (alpha_metrics.get("sharpe") <=  -self.sharpe_low and alpha_metrics.get("fitness") <= -self.fitness_low):
             logger.debug(f"alpha_id {alpha_id}, keep this alpha in local db")
             upsert_alpha(self.db, alpha)
         else:

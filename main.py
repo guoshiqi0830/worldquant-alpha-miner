@@ -10,8 +10,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_fields', '-d', action='store_true', help='refresh data_fields to local db')
 
     parser.add_argument('--refresh_alphas', '-r', action='store_true', help='refresh alphas to local db')
-    parser.add_argument('--start_date', action='store_true', help='refresh start date')
-    parser.add_argument('--end_date', action='store_true', help='refresh end date')
+    parser.add_argument('--start_date', help='refresh start date')
+    parser.add_argument('--end_date', help='refresh end date')
 
     parser.add_argument('--simulation_status', '-P', action='store_true', help='print simulation status')
     parser.add_argument('--simulation_queue', '-q', help='load simulation_queue from template')
@@ -40,7 +40,7 @@ if __name__ == '__main__':
         service.refresh_datafields()
     
     if args.refresh_alphas:
-        service.refresh_alphas()
+        service.refresh_alphas(start_date = args.start_date, end_date=args.end_date)
 
     if args.simulation_status:
         service.print_simulation_status()
