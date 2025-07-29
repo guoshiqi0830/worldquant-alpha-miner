@@ -92,4 +92,4 @@ class AlphaTemplate():
         for params in params_list:
             expression = self.template_expression.format(**params).strip()
             insert_queue(self.db, expression, json.dumps(self.settings), template_id = self.template_id)
-        logger.info(f'inserted {len(params_list)} alphas')
+        logger.info(f'add {len(params_list)} alphas to the queue')

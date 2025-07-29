@@ -10,8 +10,9 @@ if __name__ == '__main__':
     parser.add_argument('--data_fields', '-d', action='store_true', help='refresh data_fields to local db')
 
     parser.add_argument('--refresh_alphas', '-r', action='store_true', help='refresh alphas to local db')
-    parser.add_argument('--start_date', help='refresh start date')
-    parser.add_argument('--end_date', help='refresh end date')
+    parser.add_argument('--start_date', help='start date')
+    parser.add_argument('--end_date', help='end date')
+    parser.add_argument('--status', help='status')
 
     parser.add_argument('--simulation_status', '-P', action='store_true', help='print simulation status')
     parser.add_argument('--simulation_queue', '-q', help='load simulation_queue from template')
@@ -40,7 +41,7 @@ if __name__ == '__main__':
         service.refresh_datafields()
     
     if args.refresh_alphas:
-        service.refresh_alphas(start_date = args.start_date, end_date=args.end_date)
+        service.refresh_alphas(start_date = args.start_date, end_date=args.end_date, status = args.status)
 
     if args.simulation_status:
         service.print_simulation_status()
@@ -48,15 +49,11 @@ if __name__ == '__main__':
     if args.simulation_queue:
         at = AlphaTemplate(args.simulation_queue)
         at.load_simulation_queue(append = args.append)
-    
-    parallelism =int(args.parallelism) if args.parallelism else None
 
     if args.simulation:
         kwargs = {}
         if args.simulation != True:
             kwargs["template_id"] = args.simulation
-        if parallelism:
-            kwargs["parallelism"] = parallelism
         kwargs["shuffle"] = args.shuffle
         service.simulate_from_alpha_queue(**kwargs)
 

@@ -1,4 +1,6 @@
 from worldquant.api import WorldQuantSession
+from worldquant import config
+from worldquant.constants import CHECK_METRIC_MAPPING, Status
 
 from db.database import SessionLocal
 from db.crud.data_field import upsert_data_field
@@ -16,27 +18,21 @@ from contextlib import contextmanager
 import time
 import json
 import random
+import threading
 
 
 class WorldQuantService():
     def __init__(self):
         self.session = WorldQuantSession()
         self.session_time = time.time()
-        self.last_print_time = time.time()
-        self.print_interval = 5 * 60
         self.db = SessionLocal()
-        self.check_metric_mapping = {
-            'LOW_SHARPE': 'sharpe',
-            'LOW_FITNESS': 'fitness',
-            'LOW_TURNOVER': 'turnover',
-            'LOW_SUB_UNIVERSE_SHARPE': 'sub_universe_sharpe',
-            'CONCENTRATED_WEIGHT': 'concentrated_weight',
-            'SELF_CORRELATION': 'self_correlation',
-        }
-        self.sharpe_low = 1.2
-        self.fitness_low = 0.7
-        self.turnover_low = 0.01
-        self.turnover_high = 0.7
+        
+        self.last_print_time = time.time()
+        self.simulation_cnt = 0
+        self.pass_cnt = 0
+        self.fail_cnt = 0
+        self.avg_sharpe = 0
+        self.avg_fitness = 0
 
     @contextmanager
     def session_scope(self):
@@ -67,13 +63,13 @@ class WorldQuantService():
             logger.error(f'fail to fetch alphas {res.code} {res.text}')
             return None
         count = res.json()['count']
-        logger.info(f'found {count} alphas')
+        logger.debug(f'search_alpha api found {count} alphas')
         result = []
         batch_size = 100
         for i in range(0, count, batch_size):
             res = self.session.search_alpha(params, limit = batch_size, offset = i).json()
             result += res['results']
-            logger.debug(f'fetched {len(result)}')
+            logger.debug(f'search_alpha api fetched {len(result)}')
         return result
 
 
@@ -105,31 +101,39 @@ class WorldQuantService():
         logger.info("All data fields are refreshed to local db!")
 
 
-    def refresh_alphas(self, start_date = None, end_date = None):
+    def refresh_alphas(self, start_date = None, end_date = None, status = None):
         positive_params = {
-            'is.sharpe>': f'{self.sharpe_low}',
-            'is.fitness>': f'{self.fitness_low}'
+            'is.sharpe>': f'{config.sharpe_low}',
+            'is.fitness>': f'{config.fitness_low}'
         }
         negative_params = {
-            'is.sharpe<': f'-{self.sharpe_low}',
-            'is.fitness<': f'-{self.fitness_low}'
+            'is.sharpe<': f'-{config.sharpe_low}',
+            'is.fitness<': f'-{config.fitness_low}'
         }
         date_params = {}
         if start_date:
             date_params['dateCreated>'] = f'{start_date}T00:00:00+08:00'
         if end_date:
             date_params['dateCreated<'] = f'{end_date}T00:00:00+08:00'
-
+        
+        status_param = {}
+        if status == Status.ACTIVE.value:
+            status_param = { 'status!': 'UNSUBMITTEDIS-FAIL' }
+        else:
+            status_param = { 'status': 'UNSUBMITTEDIS-FAIL' }
+            
         alphas = []
         for params in (positive_params, negative_params):
             alphas += self.get_all_alphas({
-                'is.turnover>': f'{self.turnover_low}',
-                'is.turnover<': f'{self.turnover_high}',
+                'is.turnover>': f'{config.turnover_low}',
+                'is.turnover<': f'{config.turnover_high}',
                 'hidden': 'false',
                 **params,
-                **date_params
+                **date_params,
+                **status_param
             })
-
+        logger.info(f'found {len(alphas)} alphas')
+        
         for alpha in alphas:
             try:
                 settings = alpha.get('settings', {})
@@ -173,32 +177,32 @@ class WorldQuantService():
             ac_response = self.session.check_alpha(alpha_id)
             if ac_response.status_code == 200:
                 if not ac_response.text:
-                    return 'PENDING'
+                    return Status.PENDING.value
             elif ac_response.status_code == 429:
-                return 'WAITING'
+                return Status.WAITING.value
             elif ac_response.status_code == 401:
                 self.session._sign_in()
-                return 'EXPIRED'
+                return Status.EXPIRED.value
             else:
                 logger.error(f'alpha_id, {alpha_id}, error {ac_response.status_code}, {ac_response.text}')
-                return 'ERROR'
+                return Status.ERROR.value
             alpha_check_list = ac_response.json().get('is').get('checks')
         except Exception as e:
             logger.error(f'fail to check alpha {e}')
-            return 'ERROR'
+            return Status.ERROR.value
         
         alpha_check_dict = {'alpha_id': alpha_id}
-        check_status = 'PASS'
+        check_status = Status.PASS.value
         for check in alpha_check_list:
             result = check.get('result')
             check_name = check['name']
-            if self.check_metric_mapping.get(check_name):
-                alpha_check_dict[self.check_metric_mapping.get(check_name)] = check.get('value')
+            if CHECK_METRIC_MAPPING.get(check_name):
+                alpha_check_dict[CHECK_METRIC_MAPPING.get(check_name)] = check.get('value')
             if check_name == 'ALREADY_SUBMITTED':
-                check_status = 'ACTIVE'
+                check_status = Status.ACTIVE.value
                 break
-            elif result == 'FAIL':
-                check_status = 'FAIL'
+            elif result == Status.FAIL.value:
+                check_status = Status.FAIL.value
 
         alpha_check_dict['status'] = check_status
 
@@ -212,8 +216,27 @@ class WorldQuantService():
                 time.sleep(5)
 
         alpha_metrics = alpha_response.json().get('is')
+        self.simulation_cnt += 1
+        
+        sharpe = alpha_metrics.get("sharpe")
+        fitness = alpha_metrics.get("fitness")
+        if self.avg_sharpe == 0:
+            self.avg_sharpe = abs(sharpe)
+        else:
+            self.avg_sharpe = (self.avg_sharpe * (self.simulation_cnt - 1) + abs(sharpe) ) / self.simulation_cnt
+        
+        if self.avg_fitness == 0:
+            self.avg_fitness = abs(fitness) 
+        else:
+            self.avg_fitness = (self.avg_fitness * (self.simulation_cnt - 1) + abs(fitness) ) / self.simulation_cnt
+        
+        if check_status == Status.PASS.value:
+            self.pass_cnt += 1
+        else:
+            self.fail_cnt += 1
+        
         logger.debug(f'alpha_id {alpha_id}, expression: {alpha_response.json().get("regular").get("code")}')
-        logger.info(f'alpha_id {alpha_id}, sharpe: {alpha_metrics.get("sharpe")}, fitness: {alpha_metrics.get("fitness")}')
+        logger.info(f'alpha_id {alpha_id}, sharpe: {sharpe}, fitness: {fitness}')
         if alpha_metrics:
             alpha_check_dict['drawdown'] = alpha_metrics.get('drawdown')
             alpha_check_dict['long_count'] = alpha_metrics.get('longCount')
@@ -222,9 +245,9 @@ class WorldQuantService():
             alpha_check_dict['returns'] = alpha_metrics.get('returns')
             alpha_check_dict['short_count'] = alpha_metrics.get('shortCount')
         alpha = AlphaBase.model_validate(alpha_check_dict)
-        if check_status ==  'PASS' or \
-            (alpha_metrics.get("sharpe") >= self.sharpe_low and alpha_metrics.get("fitness") >= self.fitness_low) \
-            or (alpha_metrics.get("sharpe") <=  -self.sharpe_low and alpha_metrics.get("fitness") <= -self.fitness_low):
+        if check_status ==  Status.PASS.value or \
+            (sharpe >= config.sharpe_low and fitness >= config.fitness_low) or \
+            (sharpe <=  -config.sharpe_low and fitness <= -config.fitness_low):
             logger.debug(f"alpha_id {alpha_id}, keep this alpha in local db")
             upsert_alpha(self.db, alpha)
         else:
@@ -235,7 +258,7 @@ class WorldQuantService():
 
 
     def check_all_alphas(self):
-        result = get_alphas(self.db, status= ['UNSUBMITTED'])
+        result = get_alphas(self.db, status= [Status.UNSUBMITTED.value])
         alphas = []
         for row in result:
             alphas.append(row.alpha_id)
@@ -261,9 +284,9 @@ class WorldQuantService():
                 buffer.pop(0)
                 status = self._check_alpha(alpha_id)
                 logger.info(f'alpha_id {alpha_id}, check status {status}')
-                if status == 'PENDING':
+                if status == Status.PENDING.value:
                     wait_sec = 30 if wait_sec == 0 else wait_sec * 2
-                elif status in ('WAITING', 'ERROR', 'EXPIRED'):
+                elif status in (Status.WAITING.value, Status.ERROR.value, Status.EXPIRED.value):
                     wait_sec = 30
                 else:
                     continue
@@ -284,9 +307,9 @@ class WorldQuantService():
         while True:
             status = self._check_alpha(alpha_id)
             logger.info(f'alpha_id {alpha_id}, check status {status}')
-            if status == 'PENDING':
+            if status == Status.PENDING.value:
                 wait_sec = 30 if wait_sec == 0 else wait_sec * 2
-            elif status in ('WAITING', 'ERROR'):
+            elif status in (Status.WAITING.value, Status.ERROR.value):
                 wait_sec = 30
             else:
                 return status
@@ -322,7 +345,7 @@ class WorldQuantService():
                 else:
                     break
 
-            if res.get('status') == 'COMPLETE':
+            if res.get('status') == Status.COMPLETE.value:
                 alpha_id = res.get('alpha')
                 logger.debug(f'simulation completed, alpha_id {alpha_id}')
                 # upsert simulation
@@ -343,7 +366,7 @@ class WorldQuantService():
                     'visualization': res.get('settings').get('visualization'),
                     'expression': res.get('regular'),
                     'alpha_id': alpha_id,
-                    'status': 'UNSUBMITTED'
+                    'status': Status.UNSUBMITTED.value
                 })
                 upsert_alpha(db, alpha)
                 logger.debug(f'simulation table updated, alpha_id {alpha_id}')
@@ -368,18 +391,31 @@ class WorldQuantService():
         else:
             logger.info(f'{result.cnt} alphas in the queue')
             
-        result = self.db.execute(text(f"select count(*) as cnt from alpha where status = 'PASS'")).first()
-        logger.info(f'{result.cnt} submittable alphas were found')
+        result = self.db.execute(text(f"select count(*) as cnt, status from alpha group by status"))
+        for row in result:
+            logger.info(f'{row.cnt} {row.status}')
+
+    
+    def periodic_print(self):
+        logger.info('statistics for this session:')
+        logger.info(f'simulation count {self.simulation_cnt}')
+        logger.info(f'average sharpe {self.avg_sharpe}') 
+        logger.info(f'average fitness {self.avg_fitness}') 
 
 
-    def simulate_from_alpha_queue(self, template_id = None, parallelism = 3, shuffle = False):
+    def simulate_from_alpha_queue(self, template_id = None, shuffle = False):
         if template_id != None:
             where_condition = f'where template_id = {template_id}'
             template_info = f'simulate template {template_id}'
         else:
             where_condition  = ''
             template_info = 'all alphas from the queue'
-        logger.info(f"start to simulate {template_info}, parallelism {parallelism}, shuffle {shuffle}")
+        logger.info(f"start to simulate {template_info}, parallelism {config.parallelism}, shuffle {shuffle}")
+        
+        stop_event = threading.Event()
+        t = threading.Thread(target = self.periodic_print, args=(config.print_interval, stop_event))
+        t.daemon = True
+        t.start()
 
         while True:
             if time.time() - 3600 > self.session_time:
@@ -401,10 +437,6 @@ class WorldQuantService():
                 random.shuffle(result)
 
             def process_row(row):
-                if time.time() - self.last_print_time > self.print_interval:
-                    self.last_print_time = time.time()
-                    self.print_simulation_status(template_id)
-
                 simulation = row._asdict()
                 queue_id = simulation['id']
                 simulation.pop('id')
@@ -414,7 +446,7 @@ class WorldQuantService():
                     delete_queue_by_id(self.db, queue_id)
                     self.db.commit()
 
-            with ThreadPoolExecutor(max_workers = parallelism) as executor:
+            with ThreadPoolExecutor(max_workers = config.parallelism) as executor:
                 futures = [executor.submit(process_row, row) for row in result]
                 if shuffle:
                     random.shuffle(futures)
@@ -434,23 +466,23 @@ class WorldQuantService():
 
     def submit_alpha(self, alpha_id):
         check_result = self.check_one_alpha(alpha_id)
-        if check_result != 'PASS':
+        if check_result != Status.PASS.value:
             return False
 
-        status = 'FAIL'
+        status = Status.FAIL.value
         while True:
             response = self.session.submit_alpha(alpha_id)
             if response.status_code < 300:
                 logger.info(f'submitted alpha {alpha_id} successfully, {response.status_code}')
-                status = 'ACTIVE'
+                status = Status.ACTIVE.value
                 break
             elif response.status_code in (400, 403):
                 logger.error(f"fail to sumit alpha {alpha_id}, {response.status_code}, {response.text}")
                 if response.status_code == 403 and \
                     response.json().get('is').get('checks')[0].get('name') == 'ALREADY_SUBMITTED':
-                    status = 'ACTIVE'
+                    status = Status.ACTIVE.value
                 else:
-                    status = 'FAIL'
+                    status = Status.FAIL.value
                 break
             elif response.status_code == 429:
                 logger.warning(f"{response.status_code}, {response.text}, wait for 30 s and try again")
@@ -472,7 +504,7 @@ class WorldQuantService():
 
     def find_and_sumbit_alpha(self, count = 1, order_by = 'sharpe', direction = 'asc'):
         result = self.db.execute(
-                text(f"select alpha_id from alpha where status  = 'PASS' order by {order_by} {direction}")
+                text(f"select alpha_id from alpha where status  = Status.PASS.value order by {order_by} {direction}")
             ).all()
         submitted_count = 0
         for row in result:
