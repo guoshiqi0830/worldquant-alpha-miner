@@ -506,8 +506,8 @@ class WorldQuantService():
 
     def find_and_sumbit_alpha(self, count = 1, order_by = 'sharpe', direction = 'asc'):
         result = self.db.execute(
-                text(f"select alpha_id from alpha where status  = '{Status.PASS.value}' order by {order_by} {direction}")
-            ).all()
+            text(f"select alpha_id from alpha where status  = '{Status.PASS.value}' order by {order_by} {direction}")
+        ).all()
         submitted_count = 0
         for row in result:
             logger.info(f'found a submittable alpha {row.alpha_id}')
@@ -521,3 +521,39 @@ class WorldQuantService():
             if submitted_count >= count:
                 logger.info(f'Submitted {count} alphas')
                 break
+
+
+    def check_negative_direction(self):
+        result = self.db.execute(
+            text(f"select * from alpha where sharpe <= -{config.sharpe_pass} and fitness <= -{config.fitness_pass}")
+        )
+        
+        for row in result:
+            old_expression = row.expression
+            lines =  [line for line in old_expression.split('\n') if line]
+            new_expression = '\n'.join(
+                [ line if index != len(lines) - 1 else f'-{line}' for index, line in enumerate(lines) ])
+            simulation = {
+                'regular': new_expression,
+                'settings': {
+                    'instrumentType': row.instrument_type,
+                    'region': row.region,
+                    'universe': row.universe,
+                    'delay': row.delay,
+                    'decay': row.decay,
+                    'neutralization': row.neutralization,
+                    'truncation': row.truncation,
+                    'pasteurization': row.pasteurization,
+                    'unitHandling': row.unit_handling,
+                    'nanHandling': row.nan_handling,
+                    'language': row.language,
+                    'visualization': row.visualization
+                },
+                'type': row.type
+            }
+            logger.debug(f'new_expression {new_expression}')
+            alpha_id = self.simulate_one(simulation)
+            if alpha_id:
+                delete_alpha(self.db, row.alpha_id)
+                self.db.commit()
+                logger.debug(f'deleted negative alpha {row.alpha_id}')
