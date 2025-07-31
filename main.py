@@ -18,11 +18,11 @@ if __name__ == '__main__':
     parser.add_argument('--simulation_queue', '-q', help='load simulation_queue from template')
     parser.add_argument('--append', action='store_true', help='append simulation_queue')
     parser.add_argument('--shuffle', action='store_true', help='shuffle simulation_queue')
+    parser.add_argument('--stats', action='store_true',  help='print stats')
 
     parser.add_argument('--check', '-c', nargs='?', const = True, help='refresh alpha checks for completed simulations')
     parser.add_argument('--simulation', '-s', nargs='?', const = True, help='start simulation')
     parser.add_argument('--submit', '-S', nargs='?', const = True, help='find and submit alpha, or specify the alpha_id')
-    parser.add_argument('--parallelism', '-p', help='set up the parallelism of the job')
     parser.add_argument('--debug', action='store_true', help='enable debug mode')
     
     args = parser.parse_args()
@@ -55,6 +55,7 @@ if __name__ == '__main__':
         if args.simulation != True:
             kwargs["template_id"] = args.simulation
         kwargs["shuffle"] = args.shuffle
+        kwargs["stats"] = args.stats
         service.simulate_from_alpha_queue(**kwargs)
 
     if args.check:

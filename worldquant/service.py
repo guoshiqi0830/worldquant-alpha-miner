@@ -27,7 +27,6 @@ class WorldQuantService():
         self.session_time = time.time()
         self.db = SessionLocal()
         
-        self.last_print_time = time.time()
         self.simulation_cnt = 0
         self.pass_cnt = 0
         self.fail_cnt = 0
@@ -217,9 +216,8 @@ class WorldQuantService():
 
         alpha_metrics = alpha_response.json().get('is')
         self.simulation_cnt += 1
-        
-        sharpe = alpha_metrics.get("sharpe")
-        fitness = alpha_metrics.get("fitness")
+        sharpe = alpha_metrics.get("sharpe") or 0
+        fitness = alpha_metrics.get("fitness") or 0
         if self.avg_sharpe == 0:
             self.avg_sharpe = abs(sharpe)
         else:
@@ -396,14 +394,17 @@ class WorldQuantService():
             logger.info(f'{row.cnt} {row.status}')
 
     
-    def periodic_print(self):
-        logger.info('statistics for this session:')
-        logger.info(f'simulation count {self.simulation_cnt}')
-        logger.info(f'average sharpe {self.avg_sharpe}') 
-        logger.info(f'average fitness {self.avg_fitness}') 
+    def periodic_print(self, stop_event: threading.Event):
+        while not stop_event.is_set():
+            logger.info('### statistics for this session:')
+            logger.info(f'# pass count {self.pass_cnt}')
+            logger.info(f'# fail count {self.fail_cnt}')
+            logger.info(f'# average sharpe {round(self.avg_sharpe, 2)}') 
+            logger.info(f'# average fitness {round(self.avg_fitness, 2)}')
+            time.sleep(config.print_interval)
 
 
-    def simulate_from_alpha_queue(self, template_id = None, shuffle = False):
+    def simulate_from_alpha_queue(self, template_id = None, shuffle = False, stats = False):
         if template_id != None:
             where_condition = f'where template_id = {template_id}'
             template_info = f'simulate template {template_id}'
@@ -412,10 +413,11 @@ class WorldQuantService():
             template_info = 'all alphas from the queue'
         logger.info(f"start to simulate {template_info}, parallelism {config.parallelism}, shuffle {shuffle}")
         
-        stop_event = threading.Event()
-        t = threading.Thread(target = self.periodic_print, args=(config.print_interval, stop_event))
-        t.daemon = True
-        t.start()
+        if stats:
+            stop_event = threading.Event()
+            t = threading.Thread(target = self.periodic_print, args = (stop_event, ) )
+            t.daemon = True
+            t.start()
 
         while True:
             if time.time() - 3600 > self.session_time:
@@ -504,7 +506,7 @@ class WorldQuantService():
 
     def find_and_sumbit_alpha(self, count = 1, order_by = 'sharpe', direction = 'asc'):
         result = self.db.execute(
-                text(f"select alpha_id from alpha where status  = Status.PASS.value order by {order_by} {direction}")
+                text(f"select alpha_id from alpha where status  = '{Status.PASS.value}' order by {order_by} {direction}")
             ).all()
         submitted_count = 0
         for row in result:
