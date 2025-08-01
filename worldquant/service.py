@@ -26,7 +26,7 @@ class WorldQuantService():
         self.session = WorldQuantSession()
         self.session_time = time.time()
         self.db = SessionLocal()
-        
+        self.db.execute(text('PRAGMA journal_mode=WAL;'))
         self.simulation_cnt = 0
         self.pass_cnt = 0
         self.fail_cnt = 0
