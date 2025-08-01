@@ -1,5 +1,5 @@
 from worldquant.service import WorldQuantService
-from worldquant.alpha_template import AlphaTemplate
+from worldquant.alpha import AlphaTemplate
 from loguru import logger
 import sys
 import argparse

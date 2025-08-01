@@ -1,6 +1,8 @@
 worldquant_venv
-worldquant/credential.json
+config/credential.json
 db/worldquant.db
+*.db-wal
+*.db-shm
 templates/*
 !templates/example.yaml
 __pycache__

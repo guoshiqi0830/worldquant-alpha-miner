@@ -9,6 +9,7 @@ from itertools import product
 from db.crud.data_field import get_data_fields_by_criteria
 from db.crud.simulation_queue import insert_queue, delete_queue_by_template_id
 from db.database import SessionLocal
+from worldquant.utils import load_config
 
 
 class AlphaTemplate():
@@ -17,12 +18,11 @@ class AlphaTemplate():
         self.template_expression = ''
         self.template_parameters = {}
         self.template_settings = {}
-        self.default_settings = {}
+        self.default_settings = load_config('default_settings')
         self.settings = {}
         self.parameters = {}
 
         self.db = SessionLocal()
-        self._get_default_settings()
         self._read_template(template_id)
 
 
@@ -47,11 +47,6 @@ class AlphaTemplate():
                     self._get_parameters()
         if self.template_id == None:
             logger.warning(f'template_id {template_id} not found')
-
-
-    def _get_default_settings(self):
-        with open('config/default_settings.json') as f:
-            self.default_settings = json.load(f)
 
 
     def _get_parameters(self):

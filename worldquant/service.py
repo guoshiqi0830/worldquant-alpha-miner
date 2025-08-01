@@ -1,6 +1,6 @@
 from worldquant.api import WorldQuantSession
-from worldquant import config
 from worldquant.constants import CHECK_METRIC_MAPPING, Status
+from worldquant.utils import load_config
 
 from db.database import SessionLocal
 from db.crud.data_field import upsert_data_field
@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from loguru import logger
 from sqlalchemy import text
 from contextlib import contextmanager
+from types import SimpleNamespace
 
 import time
 import json
@@ -27,11 +28,14 @@ class WorldQuantService():
         self.session_time = time.time()
         self.db = SessionLocal()
         self.db.execute(text('PRAGMA journal_mode=WAL;'))
+        self.config = SimpleNamespace(**load_config('simulation'))
+        
         self.simulation_cnt = 0
         self.pass_cnt = 0
         self.fail_cnt = 0
         self.avg_sharpe = 0
         self.avg_fitness = 0
+        
 
     @contextmanager
     def session_scope(self):
@@ -102,12 +106,12 @@ class WorldQuantService():
 
     def refresh_alphas(self, start_date = None, end_date = None, status = None):
         positive_params = {
-            'is.sharpe>': f'{config.sharpe_low}',
-            'is.fitness>': f'{config.fitness_low}'
+            'is.sharpe>': f'{self.config.sharpe_low}',
+            'is.fitness>': f'{self.config.fitness_low}'
         }
         negative_params = {
-            'is.sharpe<': f'-{config.sharpe_low}',
-            'is.fitness<': f'-{config.fitness_low}'
+            'is.sharpe<': f'-{self.config.sharpe_low}',
+            'is.fitness<': f'-{self.config.fitness_low}'
         }
         date_params = {}
         if start_date:
@@ -124,8 +128,8 @@ class WorldQuantService():
         alphas = []
         for params in (positive_params, negative_params):
             alphas += self.get_all_alphas({
-                'is.turnover>': f'{config.turnover_low}',
-                'is.turnover<': f'{config.turnover_high}',
+                'is.turnover>': f'{self.config.turnover_low}',
+                'is.turnover<': f'{self.config.turnover_high}',
                 'hidden': 'false',
                 **params,
                 **date_params,
@@ -244,8 +248,8 @@ class WorldQuantService():
             alpha_check_dict['short_count'] = alpha_metrics.get('shortCount')
         alpha = AlphaBase.model_validate(alpha_check_dict)
         if check_status ==  Status.PASS.value or \
-            (sharpe >= config.sharpe_low and fitness >= config.fitness_low) or \
-            (sharpe <=  -config.sharpe_low and fitness <= -config.fitness_low):
+            (sharpe >= self.config.sharpe_low and fitness >= self.config.fitness_low) or \
+            (sharpe <=  -self.config.sharpe_low and fitness <= -self.config.fitness_low):
             logger.debug(f"alpha_id {alpha_id}, keep this alpha in local db")
             upsert_alpha(self.db, alpha)
         else:
@@ -401,7 +405,7 @@ class WorldQuantService():
             logger.info(f'# fail count {self.fail_cnt}')
             logger.info(f'# average sharpe {round(self.avg_sharpe, 2)}') 
             logger.info(f'# average fitness {round(self.avg_fitness, 2)}')
-            time.sleep(config.print_interval)
+            time.sleep(self.config.print_interval)
 
 
     def simulate_from_alpha_queue(self, template_id = None, shuffle = False, stats = False):
@@ -411,7 +415,7 @@ class WorldQuantService():
         else:
             where_condition  = ''
             template_info = 'all alphas from the queue'
-        logger.info(f"start to simulate {template_info}, parallelism {config.parallelism}, shuffle {shuffle}")
+        logger.info(f"start to simulate {template_info}, parallelism {self.config.parallelism}, shuffle {shuffle}")
         
         if stats:
             stop_event = threading.Event()
@@ -448,7 +452,7 @@ class WorldQuantService():
                     delete_queue_by_id(self.db, queue_id)
                     self.db.commit()
 
-            with ThreadPoolExecutor(max_workers = config.parallelism) as executor:
+            with ThreadPoolExecutor(max_workers = self.config.parallelism) as executor:
                 futures = [executor.submit(process_row, row) for row in result]
                 if shuffle:
                     random.shuffle(futures)
@@ -525,7 +529,7 @@ class WorldQuantService():
 
     def check_negative_direction(self):
         result = self.db.execute(
-            text(f"select * from alpha where sharpe <= -{config.sharpe_pass} and fitness <= -{config.fitness_pass}")
+            text(f"select * from alpha where sharpe <= -{self.config.sharpe_pass} and fitness <= -{self.config.fitness_pass}")
         )
         
         for row in result:

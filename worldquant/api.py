@@ -1,8 +1,7 @@
 import requests
-import json
 from requests.auth import HTTPBasicAuth
 from loguru import logger
-from util.util import add_params_to_url
+from worldquant.utils import add_params_to_url, load_config
 
 
 class WorldQuantSession():
@@ -14,7 +13,7 @@ class WorldQuantSession():
 
     def _sign_in(self):
         sess = requests.Session()
-        cred = json.load(open('worldquant/credential.json'))
+        cred = load_config('credential')
         sess.auth = HTTPBasicAuth(cred['username'], cred['password'])
         response = sess.post(f'{self.base_url}/authentication')
         if response.status_code == 201:

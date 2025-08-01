@@ -1,4 +1,5 @@
 from urllib.parse import urlencode, urlparse, urlunparse, quote, parse_qs
+import json
 
 def add_params_to_url(base_url: str, params: dict) -> str:
     parsed = urlparse(base_url)
@@ -10,3 +11,7 @@ def add_params_to_url(base_url: str, params: dict) -> str:
     new_query = urlencode(merged_params, doseq=True, quote_via=quote)
     new_parts = parsed._replace(query=new_query)
     return urlunparse(new_parts)
+
+def load_config(config_name):
+    with open(f'config/{config_name}.json') as f:
+        return json.load(f)
