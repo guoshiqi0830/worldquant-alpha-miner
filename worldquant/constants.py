@@ -18,4 +18,5 @@ class Status(Enum):
     FAIL = 'FAIL'
     ACTIVE = 'ACTIVE'
     COMPLETE = 'COMPLETE'
+    WARNING = 'WARNING'
     UNSUBMITTED = 'UNSUBMITTED'

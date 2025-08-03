@@ -14,7 +14,7 @@ if __name__ == '__main__':
     parser.add_argument('--end_date', help='end date')
     parser.add_argument('--status', help='status')
 
-    parser.add_argument('--simulation_status', '-P', action='store_true', help='print simulation status')
+    parser.add_argument('--simulation_status', '-p', action='store_true', help='print simulation status')
     parser.add_argument('--simulation_queue', '-q', help='load simulation_queue from template')
     parser.add_argument('--append', action='store_true', help='append simulation_queue')
     parser.add_argument('--shuffle', action='store_true', help='shuffle simulation_queue')

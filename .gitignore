@@ -1,6 +1,6 @@
 worldquant_venv
 config/credential.json
-db/worldquant.db
+*.db
 *.db-wal
 *.db-shm
 templates/*

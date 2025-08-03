@@ -320,6 +320,7 @@ class WorldQuantService():
         
 
     def simulate_one(self, simulation):
+        logger.debug(f'start to simulate alpha: {simulation.get("regular")}')
         with self.session_scope() as db:
             while True:
                 response = self.session.post_simulation(simulation)
@@ -329,7 +330,7 @@ class WorldQuantService():
                     logger.debug(f'simulation submitted, simulate_id {simulate_id}')
                     break
                 elif response.status_code in (429, ):
-                    logger.info(f'{response.status_code}, {response.text}, wait for 30s')
+                    logger.warning(f'{response.status_code}, {response.text}, wait for 30s')
                     time.sleep(30)
                     continue
                 elif response.status_code in (401,):
@@ -338,7 +339,7 @@ class WorldQuantService():
                     continue
                 else:
                     logger.error(f'{response.status_code}, {response.text}')
-                    return None
+                    return
             
             while True:
                 res = self.session.get_simulation_status(simulate_id).json()
@@ -347,7 +348,9 @@ class WorldQuantService():
                 else:
                     break
 
-            if res.get('status') == Status.COMPLETE.value:
+            if res.get('status') in (Status.COMPLETE.value, Status.WARNING.value):
+                if res.get('status') == Status.WARNING.value:
+                    logger.warning(f'{res.get("message")}')
                 alpha_id = res.get('alpha')
                 logger.debug(f'simulation completed, alpha_id {alpha_id}')
                 # upsert simulation
@@ -375,13 +378,10 @@ class WorldQuantService():
 
                 # update alpha check and status for simulation table
                 self.check_one_alpha(alpha_id)
-
-                return alpha_id
             else:
                 logger.error(f'Fail to complete simulation for {simulate_id}, status is {res.get("status")}')
-                logger.error(f'{res}')
-                return None
-
+                logger.error(res)
+            
     
     def print_simulation_status(self, template_id = None):
         where_condition = ''
@@ -400,18 +400,19 @@ class WorldQuantService():
     
     def periodic_print(self, stop_event: threading.Event):
         while not stop_event.is_set():
-            logger.info('### statistics for this session:')
-            logger.info(f'# pass count {self.pass_cnt}')
-            logger.info(f'# fail count {self.fail_cnt}')
-            logger.info(f'# average sharpe {round(self.avg_sharpe, 2)}') 
-            logger.info(f'# average fitness {round(self.avg_fitness, 2)}')
+            logger.info('--- statistics for this session ---')
+            logger.info(f'- pass count {self.pass_cnt}')
+            logger.info(f'- fail count {self.fail_cnt}')
+            logger.info(f'- average sharpe {round(self.avg_sharpe, 2)}') 
+            logger.info(f'- average fitness {round(self.avg_fitness, 2)}')
+            logger.info('-----------------------------------')
             time.sleep(self.config.print_interval)
 
 
     def simulate_from_alpha_queue(self, template_id = None, shuffle = False, stats = False):
         if template_id != None:
             where_condition = f'where template_id = {template_id}'
-            template_info = f'simulate template {template_id}'
+            template_info = f'template {template_id}'
         else:
             where_condition  = ''
             template_info = 'all alphas from the queue'
@@ -444,13 +445,13 @@ class WorldQuantService():
 
             def process_row(row):
                 simulation = row._asdict()
-                queue_id = simulation['id']
+                queue_id = simulation.get('id')
                 simulation.pop('id')
                 simulation['settings'] = json.loads(simulation['settings'])
-                alpha_id = self.simulate_one(simulation)
-                if alpha_id:
-                    delete_queue_by_id(self.db, queue_id)
-                    self.db.commit()
+                self.simulate_one(simulation)
+                delete_queue_by_id(self.db, queue_id)
+                self.db.commit()
+            
 
             with ThreadPoolExecutor(max_workers = self.config.parallelism) as executor:
                 futures = [executor.submit(process_row, row) for row in result]
