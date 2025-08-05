@@ -11,6 +11,9 @@ parameters:
     where:
       type: MATRIX
       dataset_id: fundamental6
+    order_by: user_count desc
+    offset: 0
+    limit: 500
   group:
     - subindustry
 

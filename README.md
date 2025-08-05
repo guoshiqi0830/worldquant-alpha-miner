@@ -1,9 +1,7 @@
 # WorldQuant Alpha Miner
 ## initialize the environment
-### python virtual environment
+### install python requirements
 ```shell
-python -m venv worldquant_venv
-source worldquant_venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -13,7 +11,7 @@ sh scripts/create_db.sh
 ```
 
 ### add credential
-add your credentail to worldquant/credential.json
+add your credentail to config/credential.json
 
 ## prepare data
 ### refresh data fields
@@ -22,24 +20,24 @@ python main.py -d
 ```
 
 ### add templates
-create templates under templates folder with file name format <template_id>-<template_name>.txt
+create yaml file templates under templates folder.
 
-add paramters to the {} placeholder, you can use the filter of data_field table. 
+add paramters to the {} placeholder.
 
-e.g. {dataset_id=fundamental2,type=MATRIX}
+please refer to the example.yaml
 
 
-### populate alpha queue
+### populate the simulation queue
 ```shell
-python main.py -q <template_id>
+python main.py -q [template_id]
 ```
 
 ## start simulation
 ```shell
-python main.py -s <template_id>
+python main.py -s [template_id] [--stats] [--shuffle]
 ```
 
 ## submit alpha
 ```shell
-python main.py -S <alpha_id>
+python main.py -S [alpha_id]
 ```
