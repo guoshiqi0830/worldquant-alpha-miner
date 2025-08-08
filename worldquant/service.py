@@ -310,7 +310,7 @@ class WorldQuantService():
             status = self._check_alpha(alpha_id)
             logger.info(f'alpha_id {alpha_id}, check status {status}')
             if status == Status.PENDING.value:
-                wait_sec = 30 if wait_sec == 0 else wait_sec * 2
+                wait_sec = 30 if wait_sec == 0 else (wait_sec * 2 if wait_sec < 240 else 240)
             elif status in (Status.WAITING.value, Status.ERROR.value):
                 wait_sec = 30
             else:
@@ -330,8 +330,13 @@ class WorldQuantService():
                     logger.debug(f'simulation submitted, simulate_id {simulate_id}')
                     break
                 elif response.status_code in (429, ):
-                    logger.warning(f'{response.status_code}, {response.text}, wait for 30s')
-                    time.sleep(30)
+                    reason = response.json().get('detail')
+                    if reason == 'DAILY_SIMULATION_LIMIT_EXCEEDED':
+                        wait_sec = 10 * 60
+                    else:
+                        wait_sec = 30
+                    logger.warning(f'{response.status_code}, {response.text}, wait for {wait_sec} s')
+                    time.sleep(wait_sec)
                     continue
                 elif response.status_code in (401,):
                     self.session._sign_in()
@@ -535,8 +540,8 @@ class WorldQuantService():
         
         for row in result:
             old_expression = row.expression
-            lines =  [line for line in old_expression.split('\n') if line]
-            new_expression = '\n'.join(
+            lines =  [line for line in old_expression.split(';') if line]
+            new_expression = ';'.join(
                 [ line if index != len(lines) - 1 else f'-{line}' for index, line in enumerate(lines) ])
             simulation = {
                 'regular': new_expression,
