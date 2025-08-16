@@ -6,5 +6,10 @@
     "turnover_low" : 0.01,
     "turnover_high" : 0.7,
     "print_interval" : 300,
-    "parallelism" : 3
+    "parallelism" : 3,
+    "submition": {
+        "count": 2,
+        "order_by": "sharpe",
+        "direction": "asc"
+    }
 }

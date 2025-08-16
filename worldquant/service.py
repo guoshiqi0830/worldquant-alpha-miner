@@ -1,6 +1,6 @@
 from worldquant.api import WorldQuantSession
 from worldquant.constants import CHECK_METRIC_MAPPING, Status
-from worldquant.utils import load_config
+from worldquant.utils import load_config, dict_to_namespace
 
 from db.database import SessionLocal
 from db.crud.data_field import upsert_data_field
@@ -14,7 +14,6 @@ from pydantic import ValidationError
 from loguru import logger
 from sqlalchemy import text
 from contextlib import contextmanager
-from types import SimpleNamespace
 
 import time
 import json
@@ -28,7 +27,7 @@ class WorldQuantService():
         self.session_time = time.time()
         self.db = SessionLocal()
         self.db.execute(text('PRAGMA journal_mode=WAL;'))
-        self.config = SimpleNamespace(**load_config('simulation'))
+        self.config = dict_to_namespace(load_config('simulation'))
         
         self.simulation_cnt = 0
         self.pass_cnt = 0
@@ -514,9 +513,10 @@ class WorldQuantService():
         return True if response.status_code < 300 else False
 
 
-    def find_and_sumbit_alpha(self, count = 1, order_by = 'sharpe', direction = 'asc'):
+    def find_and_sumbit_alpha(self):
         result = self.db.execute(
-            text(f"select alpha_id from alpha where status  = '{Status.PASS.value}' order by {order_by} {direction}")
+            text(f"select alpha_id from alpha where status  = '{Status.PASS.value}' \
+                order by {self.config.submition.order_by} {self.config.submition.direction}")
         ).all()
         submitted_count = 0
         for row in result:
@@ -528,8 +528,8 @@ class WorldQuantService():
             else:
                 logger.info(f'fail to submit alpha {row.alpha_id}')
 
-            if submitted_count >= count:
-                logger.info(f'Submitted {count} alphas')
+            if submitted_count >= self.config.submition.count:
+                logger.info(f'Submitted {self.config.submition.count} alphas')
                 break
 
 

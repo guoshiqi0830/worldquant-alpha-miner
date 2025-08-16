@@ -1,4 +1,5 @@
 from urllib.parse import urlencode, urlparse, urlunparse, quote, parse_qs
+from types import SimpleNamespace
 import json
 
 def add_params_to_url(base_url: str, params: dict) -> str:
@@ -15,3 +16,11 @@ def add_params_to_url(base_url: str, params: dict) -> str:
 def load_config(config_name):
     with open(f'config/{config_name}.json') as f:
         return json.load(f)
+
+def dict_to_namespace(d):
+    if isinstance(d, dict):
+        return SimpleNamespace(**{k: dict_to_namespace(v) for k, v in d.items()})
+    elif isinstance(d, list):
+        return [dict_to_namespace(v) for v in d]
+    else:
+        return d
