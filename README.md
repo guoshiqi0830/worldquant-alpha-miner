@@ -7,7 +7,7 @@ pip install -r requirements.txt
 
 ### create local datadbase
 ```shell
-sh scripts/create_db.sh
+sh bin/create_db.sh
 ```
 
 ### add credential
