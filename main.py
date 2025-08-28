@@ -25,7 +25,7 @@ if __name__ == '__main__':
     parser.add_argument('--submit', '-S', nargs='?', const = True, help='find and submit alpha, or specify the alpha_id')
     parser.add_argument('--debug', action='store_true', help='enable debug mode')
     
-    parser.add_argument('--check_negative', '-n', nargs='?', const = True, help='check negative alpha')
+    # parser.add_argument('--check_negative', '-n', nargs='?', const = True, help='check negative alpha')
     
     args = parser.parse_args()
 
@@ -72,5 +72,5 @@ if __name__ == '__main__':
         else:
             service.submit_alpha(args.submit)
 
-    if args.check_negative:
-        service.check_negative_direction()
+    # if args.check_negative:
+    #     service.check_negative_direction()

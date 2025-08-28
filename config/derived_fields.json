@@ -1,0 +1,37 @@
+[
+    {
+        "field_name": "adj_close",
+        "expression": "close / split",
+        "description": "close adjustment",
+        "category_id": "pv",
+        "type": "MATRIX"
+    },
+    {
+        "field_name": "adj_volume",
+        "expression": "volume * split",
+        "description": "volume adjustment",
+        "category_id": "pv",
+        "type": "MATRIX"
+    },
+    {
+        "field_name": "adj_sharesout",
+        "expression": "sharesout * split",
+        "description": "sharesout adjustment",
+        "category_id": "pv",
+        "type": "MATRIX"
+    },
+    {
+        "field_name": "ev_over_operating_income",
+        "expression": "enterprise_value / operating_income",
+        "description": "ev over operating income",
+        "category_id": "fundamental",
+        "type": "MATRIX"
+    },
+    {
+        "field_name": "ev_over_ebit",
+        "expression": "enterprise_value / ebit",
+        "description": "ev over ebit",
+        "category_id": "fundamental",
+        "type": "MATRIX"
+    }
+]
